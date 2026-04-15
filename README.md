@@ -3,14 +3,15 @@ Utility for keeping track of PR reviews
 ## Usage
 
 ```
-pr-status.sh [-r OWNER/REPO] [-c CONFIG] [-t THREADS] <command>
+pr-status.sh [-r OWNER/REPO] [-c CONFIG] [-t THREADS]
 ```
 
-## Commands
+Launches an interactive prompt. Available commands:
 
 - `list` — List all open pull requests
 - `unreviewed` — List open PRs you haven't reviewed
 - `reviewed` — List open PRs you've reviewed, with activity timestamps
+- `quit` / `exit` — Exit
 
 ## Options
 

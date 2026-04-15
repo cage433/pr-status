@@ -9,12 +9,7 @@ GH_USER="$(gh api user --jq '.login' 2>/dev/null)" || {
 
 usage() {
     cat <<EOF
-Usage: $SCRIPT_NAME [-r OWNER/REPO] [-c CONFIG] [-t THREADS] <command>
-
-Commands:
-  list          List all open pull requests
-  unreviewed    List open PRs you haven't reviewed
-  reviewed      List open PRs you've reviewed, with activity timestamps
+Usage: $SCRIPT_NAME [-r OWNER/REPO] [-c CONFIG] [-t THREADS]
 
 Options:
   -r REPO       Repository in OWNER/REPO format (overrides config)
@@ -47,8 +42,6 @@ while getopts ":r:c:t:h" opt; do
     esac
 done
 shift $((OPTIND - 1))
-
-COMMAND="${1:-}"
 
 # -- Config parsing ------------------------------------------------------------
 
@@ -110,14 +103,12 @@ if [[ -z "$OWNER" || -z "$REPO_NAME" ]]; then
     exit 1
 fi
 
-if [[ -z "$COMMAND" ]]; then
-    echo "Error: No command specified." >&2
-    usage
-fi
+# -- Write Python script to temp file ------------------------------------------
 
-# -- Main: fetch and process entirely in Python --------------------------------
+PYTHON_SCRIPT="$(mktemp /tmp/pr-status.XXXXXX.py)"
+trap 'rm -f "$PYTHON_SCRIPT"' EXIT
 
-python3 - "$COMMAND" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" <<'PYEOF'
+cat > "$PYTHON_SCRIPT" <<'PYEOF'
 import subprocess
 import json
 import sys
@@ -350,3 +341,22 @@ elif command == "reviewed":
     if found == 0:
         print("  None -- you have not reviewed any open PRs yet.")
 PYEOF
+
+# -- Interactive loop ----------------------------------------------------------
+
+echo "$OWNER/$REPO_NAME  (commands: list, unreviewed, reviewed)"
+while true; do
+    printf "> "
+    IFS= read -r COMMAND || { echo; break; }
+    case "$COMMAND" in
+        list|unreviewed|reviewed)
+            python3 "$PYTHON_SCRIPT" "$COMMAND" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
+            ;;
+        quit|exit|"")
+            break
+            ;;
+        *)
+            echo "Unknown command '$COMMAND'. Use: list, unreviewed, reviewed" >&2
+            ;;
+    esac
+done
