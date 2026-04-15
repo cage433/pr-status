@@ -120,6 +120,7 @@ owner = sys.argv[4]
 repo = sys.argv[5]
 max_threads = int(sys.argv[6])
 ignored_prs_str = sys.argv[7]
+pr_number = int(sys.argv[8]) if len(sys.argv) > 8 else None
 
 ignored = set()
 if ignored_str:
@@ -210,6 +211,37 @@ query($owner: String!, $repo: String!, $cursor: String) {
   }
 }
 """ % max_threads
+
+GRAPHQL_QUERY_COMMENTS = """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      title
+      comments(first: 100) {
+        nodes {
+          author { login }
+          createdAt
+          body
+        }
+      }
+      reviews(first: 100) {
+        nodes {
+          author { login }
+          submittedAt
+          body
+          comments(first: 100) {
+            nodes {
+              author { login }
+              createdAt
+              body
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
 
 def fetch_all_prs(query):
     all_prs = []
@@ -340,15 +372,56 @@ elif command == "reviewed":
             num, title, my_last, last_any, last_commit))
     if found == 0:
         print("  None -- you have not reviewed any open PRs yet.")
+
+elif command == "comments":
+    cmd = ["gh", "api", "graphql",
+           "-f", "query=" + GRAPHQL_QUERY_COMMENTS,
+           "-f", "owner=" + owner,
+           "-f", "repo=" + repo,
+           "-F", "number=" + str(pr_number)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print("Error fetching PR: " + result.stderr, file=sys.stderr)
+        sys.exit(1)
+    pr = json.loads(result.stdout)["data"]["repository"]["pullRequest"]
+    if pr is None:
+        print("PR #%d not found." % pr_number, file=sys.stderr)
+        sys.exit(1)
+
+    rows = []
+    for c in pr.get("comments", {}).get("nodes", []):
+        rows.append((c.get("createdAt", ""), (c.get("author") or {}).get("login", ""), "comment", c.get("body", "")))
+    for rev in pr.get("reviews", {}).get("nodes", []):
+        author = (rev.get("author") or {}).get("login", "")
+        body = rev.get("body", "").strip()
+        if body:
+            rows.append((rev.get("submittedAt", ""), author, "review", body))
+        for c in rev.get("comments", {}).get("nodes", []):
+            rows.append((c.get("createdAt", ""), (c.get("author") or {}).get("login", ""), "inline", c.get("body", "")))
+    rows.sort(key=lambda x: x[0])
+
+    print("PR #%d: %s" % (pr_number, pr.get("title", "")))
+    print()
+    print("%-17s %-20s %-8s %s" % ("DATE", "AUTHOR", "TYPE", "COMMENT"))
+    print("%-17s %-20s %-8s %s" % ("-" * 17, "-" * 20, "-" * 8, "-" * 60))
+    for date, author, typ, body in rows:
+        summary = body.split("\n")[0][:70]
+        print("%-17s %-20s %-8s %s" % (fmt_date(date), author[:20], typ, summary))
+    if not rows:
+        print("  No comments on this PR.")
 PYEOF
 
 # -- Interactive loop ----------------------------------------------------------
 
-echo "$OWNER/$REPO_NAME  (commands: list, unreviewed, reviewed)"
+echo "$OWNER/$REPO_NAME  (commands: list, unreviewed, reviewed, comments <PR>)"
 while true; do
     printf "> "
-    IFS= read -r COMMAND || { echo; break; }
-    case "$COMMAND" in
+    IFS= read -r INPUT || { echo; break; }
+    CMD="${INPUT%% *}"
+    ARG="${INPUT#* }"
+    [[ "$ARG" == "$INPUT" ]] && ARG=""
+    ARG="${ARG#\#}"
+    case "$CMD" in
         list|l)
             python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
             ;;
@@ -358,11 +431,18 @@ while true; do
         reviewed|r)
             python3 "$PYTHON_SCRIPT" "reviewed" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
             ;;
+        comments|c)
+            if [[ -z "$ARG" ]]; then
+                echo "Usage: comments <PR number>" >&2
+            else
+                python3 "$PYTHON_SCRIPT" "comments" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$ARG"
+            fi
+            ;;
         quit|exit|"")
             break
             ;;
         *)
-            echo "Unknown command '$COMMAND'. Use: list, unreviewed, reviewed" >&2
+            echo "Unknown command '$CMD'. Use: list, unreviewed, reviewed, comments <PR>" >&2
             ;;
     esac
 done
