@@ -24,7 +24,7 @@ Options:
 
 Config file format:
   owner: OWNER
-  repo: REPO
+  repo-name: REPO_NAME
   ignore-author: user1, user2, user3
   ignore-pr: 1234, 5678
 EOF
@@ -53,7 +53,7 @@ COMMAND="${1:-}"
 # -- Config parsing ------------------------------------------------------------
 
 OWNER=""
-REPONAME=""
+REPO_NAME=""
 IGNORED_AUTHORS=""
 IGNORED_PRS=""
 
@@ -75,8 +75,8 @@ if [[ -n "$CONFIG_FILE" ]]; then
         if [[ "$line" =~ ^owner:[[:space:]]*(.*) ]]; then
             OWNER="$(echo "${BASH_REMATCH[1]}" | xargs)"
         fi
-        if [[ "$line" =~ ^repo:[[:space:]]*(.*) ]]; then
-            REPONAME="$(echo "${BASH_REMATCH[1]}" | xargs)"
+        if [[ "$line" =~ ^repo-name:[[:space:]]*(.*) ]]; then
+            REPO_NAME="$(echo "${BASH_REMATCH[1]}" | xargs)"
         fi
         if [[ "$line" =~ ^ignore-author:[[:space:]]*(.*) ]]; then
             IFS=',' read -ra authors <<< "${BASH_REMATCH[1]}"
@@ -99,14 +99,14 @@ if [[ -n "$CONFIG_FILE" ]]; then
     done < "$CONFIG_FILE"
 fi
 
-# -r OWNER/REPO overrides config
+# -r OWNER/REPO_NAME overrides config
 if [[ -n "$REPO" ]]; then
     OWNER="${REPO%%/*}"
-    REPONAME="${REPO##*/}"
+    REPO_NAME="${REPO##*/}"
 fi
 
-if [[ -z "$OWNER" || -z "$REPONAME" ]]; then
-    echo "Error: no repository specified. Use -r OWNER/REPO or set 'owner:' and 'repo:' in config." >&2
+if [[ -z "$OWNER" || -z "$REPO_NAME" ]]; then
+    echo "Error: no repository specified. Use -r OWNER/REPO_NAME or set 'owner:' and 'repo-name:' in config." >&2
     exit 1
 fi
 
@@ -117,7 +117,7 @@ fi
 
 # -- Main: fetch and process entirely in Python --------------------------------
 
-python3 - "$COMMAND" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPONAME" "$MAX_THREADS" "$IGNORED_PRS" <<'PYEOF'
+python3 - "$COMMAND" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" <<'PYEOF'
 import subprocess
 import json
 import sys

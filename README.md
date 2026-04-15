@@ -25,7 +25,7 @@ Optional file at `~/.pr-status.conf` (or specified via `-c`):
 
 ```
 owner: OWNER
-repo: REPO
+repo-name: REPO_NAME
 ignore-author: user1, user2, user3
 ignore-pr: 1234, 5678
 ```
