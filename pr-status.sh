@@ -18,7 +18,7 @@ Commands:
 
 Options:
   -r REPO       Repository in OWNER/REPO format (overrides config)
-  -c CONFIG     Path to config file (default: ~/.pr-status.conf)
+  -c CONFIG     Path to config file (default: ~/.pr-status/config)
   -t THREADS    Max review threads to fetch per PR (default: 50)
   -h            Show this help message
 
@@ -33,7 +33,7 @@ EOF
 
 REPO=""
 CONFIG_FILE=""
-DEFAULT_CONFIG="$HOME/.pr-status.conf"
+DEFAULT_CONFIG="$HOME/.pr-status/config"
 MAX_THREADS=50
 
 while getopts ":r:c:t:h" opt; do

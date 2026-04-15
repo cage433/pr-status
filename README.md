@@ -15,13 +15,13 @@ pr-status.sh [-r OWNER/REPO] [-c CONFIG] [-t THREADS] <command>
 ## Options
 
 - `-r REPO` — Repository in OWNER/REPO format (overrides config)
-- `-c CONFIG` — Path to config file (default: `~/.pr-status.conf`)
+- `-c CONFIG` — Path to config file (default: `~/.pr-status/config`)
 - `-t THREADS` — Max review threads to fetch per PR (default: 50)
 - `-h` — Show help message
 
 ## Config file
 
-Optional file at `~/.pr-status.conf` (or specified via `-c`):
+Optional file at `~/.pr-status/config` (or specified via `-c`):
 
 ```
 owner: OWNER
