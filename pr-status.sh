@@ -9,7 +9,7 @@ GH_USER="$(gh api user --jq '.login' 2>/dev/null)" || {
 
 usage() {
     cat <<EOF
-Usage: $SCRIPT_NAME -r OWNER/REPO [-c CONFIG] [-t THREADS] <command>
+Usage: $SCRIPT_NAME [-r OWNER/REPO] [-c CONFIG] [-t THREADS] <command>
 
 Commands:
   list          List all open pull requests
@@ -17,12 +17,13 @@ Commands:
   reviewed      List open PRs you've reviewed, with activity timestamps
 
 Options:
-  -r REPO       Repository in OWNER/REPO format (required)
+  -r REPO       Repository in OWNER/REPO format (overrides config)
   -c CONFIG     Path to config file (default: ~/.pr-status.conf)
   -t THREADS    Max review threads to fetch per PR (default: 50)
   -h            Show this help message
 
 Config file format:
+  repo: OWNER/REPO
   ignore-author: user1, user2, user3
   ignore-pr: 1234, 5678
 EOF
@@ -48,19 +49,6 @@ shift $((OPTIND - 1))
 
 COMMAND="${1:-}"
 
-if [[ -z "$REPO" ]]; then
-    echo "Error: -r OWNER/REPO is required." >&2
-    exit 1
-fi
-
-if [[ -z "$COMMAND" ]]; then
-    echo "Error: No command specified." >&2
-    usage
-fi
-
-OWNER="${REPO%%/*}"
-REPONAME="${REPO##*/}"
-
 # -- Config parsing ------------------------------------------------------------
 
 IGNORED_AUTHORS=""
@@ -81,6 +69,11 @@ if [[ -n "$CONFIG_FILE" ]]; then
         case "$line" in
             ""|\#*) continue ;;
         esac
+        if [[ "$line" =~ ^repo:[[:space:]]*(.*) ]]; then
+            if [[ -z "$REPO" ]]; then
+                REPO="$(echo "${BASH_REMATCH[1]}" | xargs)"
+            fi
+        fi
         if [[ "$line" =~ ^ignore-author:[[:space:]]*(.*) ]]; then
             IFS=',' read -ra authors <<< "${BASH_REMATCH[1]}"
             for author in "${authors[@]}"; do
@@ -100,6 +93,16 @@ if [[ -n "$CONFIG_FILE" ]]; then
             done
         fi
     done < "$CONFIG_FILE"
+fi
+
+if [[ -z "$REPO" ]]; then
+    echo "Error: no repository specified. Use -r OWNER/REPO or set 'repo:' in config." >&2
+    exit 1
+fi
+
+if [[ -z "$COMMAND" ]]; then
+    echo "Error: No command specified." >&2
+    usage
 fi
 
 # -- Main: fetch and process entirely in Python --------------------------------
