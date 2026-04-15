@@ -24,7 +24,8 @@ pr-status.sh [-r OWNER/REPO] [-c CONFIG] [-t THREADS] <command>
 Optional file at `~/.pr-status.conf` (or specified via `-c`):
 
 ```
-repo: OWNER/REPO
+owner: OWNER
+repo: REPO
 ignore-author: user1, user2, user3
 ignore-pr: 1234, 5678
 ```

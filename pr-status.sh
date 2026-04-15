@@ -23,7 +23,8 @@ Options:
   -h            Show this help message
 
 Config file format:
-  repo: OWNER/REPO
+  owner: OWNER
+  repo: REPO
   ignore-author: user1, user2, user3
   ignore-pr: 1234, 5678
 EOF
@@ -51,6 +52,8 @@ COMMAND="${1:-}"
 
 # -- Config parsing ------------------------------------------------------------
 
+OWNER=""
+REPONAME=""
 IGNORED_AUTHORS=""
 IGNORED_PRS=""
 
@@ -69,10 +72,11 @@ if [[ -n "$CONFIG_FILE" ]]; then
         case "$line" in
             ""|\#*) continue ;;
         esac
+        if [[ "$line" =~ ^owner:[[:space:]]*(.*) ]]; then
+            OWNER="$(echo "${BASH_REMATCH[1]}" | xargs)"
+        fi
         if [[ "$line" =~ ^repo:[[:space:]]*(.*) ]]; then
-            if [[ -z "$REPO" ]]; then
-                REPO="$(echo "${BASH_REMATCH[1]}" | xargs)"
-            fi
+            REPONAME="$(echo "${BASH_REMATCH[1]}" | xargs)"
         fi
         if [[ "$line" =~ ^ignore-author:[[:space:]]*(.*) ]]; then
             IFS=',' read -ra authors <<< "${BASH_REMATCH[1]}"
@@ -95,8 +99,14 @@ if [[ -n "$CONFIG_FILE" ]]; then
     done < "$CONFIG_FILE"
 fi
 
-if [[ -z "$REPO" ]]; then
-    echo "Error: no repository specified. Use -r OWNER/REPO or set 'repo:' in config." >&2
+# -r OWNER/REPO overrides config
+if [[ -n "$REPO" ]]; then
+    OWNER="${REPO%%/*}"
+    REPONAME="${REPO##*/}"
+fi
+
+if [[ -z "$OWNER" || -z "$REPONAME" ]]; then
+    echo "Error: no repository specified. Use -r OWNER/REPO or set 'owner:' and 'repo:' in config." >&2
     exit 1
 fi
 
