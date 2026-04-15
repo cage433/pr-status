@@ -349,8 +349,14 @@ while true; do
     printf "> "
     IFS= read -r COMMAND || { echo; break; }
     case "$COMMAND" in
-        list|unreviewed|reviewed)
-            python3 "$PYTHON_SCRIPT" "$COMMAND" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
+        list|l)
+            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
+            ;;
+        unreviewed|u)
+            python3 "$PYTHON_SCRIPT" "unreviewed" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
+            ;;
+        reviewed|r)
+            python3 "$PYTHON_SCRIPT" "reviewed" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
             ;;
         quit|exit|"")
             break
