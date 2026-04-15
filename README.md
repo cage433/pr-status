@@ -11,7 +11,7 @@ Launches an interactive prompt. Available commands (single-letter abbreviations 
 - `list` (`l`) — List all open pull requests
 - `unreviewed` (`u`) — List open PRs you haven't reviewed
 - `reviewed` (`r`) — List open PRs you've reviewed, with activity timestamps
-- `comments` (`c`) `<PR>` — Show a one-line summary of every comment on a PR
+- `comments` (`c`) `<PR> [-no-ai]` — Show a one-line summary of every comment on a PR; `-no-ai` excludes comments from AI authors
 - `quit` / `exit` — Exit
 
 ## Options
@@ -30,6 +30,7 @@ owner: OWNER
 repo-name: REPO_NAME
 ignore-author: user1, user2, user3
 ignore-pr: 1234, 5678
+ai-author: bot1, bot2
 ```
 
 ## Prerequisites

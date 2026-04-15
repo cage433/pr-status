@@ -22,6 +22,7 @@ Config file format:
   repo-name: REPO_NAME
   ignore-author: user1, user2, user3
   ignore-pr: 1234, 5678
+  ai-author: bot1, bot2
 EOF
     exit 0
 }
@@ -49,6 +50,7 @@ OWNER=""
 REPO_NAME=""
 IGNORED_AUTHORS=""
 IGNORED_PRS=""
+AI_AUTHORS=""
 
 # Use explicit config, or fall back to default if it exists
 if [[ -z "$CONFIG_FILE" ]]; then
@@ -89,6 +91,15 @@ if [[ -n "$CONFIG_FILE" ]]; then
                 fi
             done
         fi
+        if [[ "$line" =~ ^ai-author:[[:space:]]*(.*) ]]; then
+            IFS=',' read -ra authors <<< "${BASH_REMATCH[1]}"
+            for author in "${authors[@]}"; do
+                author="$(echo "$author" | xargs)"
+                if [[ -n "$author" ]]; then
+                    AI_AUTHORS="${AI_AUTHORS}|${author}"
+                fi
+            done
+        fi
     done < "$CONFIG_FILE"
 fi
 
@@ -121,6 +132,15 @@ repo = sys.argv[5]
 max_threads = int(sys.argv[6])
 ignored_prs_str = sys.argv[7]
 pr_number = int(sys.argv[8]) if len(sys.argv) > 8 else None
+ai_authors_str = sys.argv[9] if len(sys.argv) > 9 else ""
+no_ai = sys.argv[10] == "1" if len(sys.argv) > 10 else False
+
+ai_authors = set()
+if ai_authors_str:
+    for a in ai_authors_str.split("|"):
+        a = a.strip()
+        if a:
+            ai_authors.add(a)
 
 ignored = set()
 if ignored_str:
@@ -390,14 +410,18 @@ elif command == "comments":
 
     rows = []
     for c in pr.get("comments", {}).get("nodes", []):
-        rows.append((c.get("createdAt", ""), (c.get("author") or {}).get("login", ""), "comment", c.get("body", "")))
+        author = (c.get("author") or {}).get("login", "")
+        if no_ai and author in ai_authors:
+            continue
+        rows.append((c.get("createdAt", ""), author, "comment", c.get("body", "")))
     for rev in pr.get("reviews", {}).get("nodes", []):
         author = (rev.get("author") or {}).get("login", "")
         body = rev.get("body", "").strip()
-        if body:
-            rows.append((rev.get("submittedAt", ""), author, "review", body))
-        for c in rev.get("comments", {}).get("nodes", []):
-            rows.append((c.get("createdAt", ""), (c.get("author") or {}).get("login", ""), "inline", c.get("body", "")))
+        if not (no_ai and author in ai_authors):
+            if body:
+                rows.append((rev.get("submittedAt", ""), author, "review", body))
+            for c in rev.get("comments", {}).get("nodes", []):
+                rows.append((c.get("createdAt", ""), author, "inline", c.get("body", "")))
     rows.sort(key=lambda x: x[0])
 
     print("PR #%d: %s" % (pr_number, pr.get("title", "")))
@@ -432,10 +456,13 @@ while true; do
             python3 "$PYTHON_SCRIPT" "reviewed" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
             ;;
         comments|c)
-            if [[ -z "$ARG" ]]; then
-                echo "Usage: comments <PR number>" >&2
+            PR_ARG="${ARG%% *}"
+            REST="${ARG#* }"; [[ "$REST" == "$ARG" ]] && REST=""
+            NO_AI=0; [[ "$REST" == *"-no-ai"* ]] && NO_AI=1
+            if [[ -z "$PR_ARG" ]]; then
+                echo "Usage: comments <PR number> [-no-ai]" >&2
             else
-                python3 "$PYTHON_SCRIPT" "comments" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$ARG"
+                python3 "$PYTHON_SCRIPT" "comments" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$PR_ARG" "$AI_AUTHORS" "$NO_AI"
             fi
             ;;
         quit|exit|"")
