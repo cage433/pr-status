@@ -68,6 +68,7 @@ load_config() {
     IGNORED_AUTHORS=""
     IGNORED_PRS=""
     AI_AUTHORS=""
+    AUTHOR_NAMES=""
 
     if [[ -n "$CONFIG_FILE" ]]; then
         while IFS= read -r line; do
@@ -107,6 +108,15 @@ load_config() {
                     fi
                 done
             fi
+            if [[ "$line" =~ ^author-name:[[:space:]]*(.*) ]]; then
+                IFS=',' read -ra mappings <<< "${BASH_REMATCH[1]}"
+                for mapping in "${mappings[@]}"; do
+                    mapping="$(echo "$mapping" | xargs)"
+                    if [[ -n "$mapping" ]]; then
+                        AUTHOR_NAMES="${AUTHOR_NAMES}|${mapping}"
+                    fi
+                done
+            fi
         done < "$CONFIG_FILE"
     fi
 
@@ -141,18 +151,19 @@ owner = sys.argv[4]
 repo = sys.argv[5]
 max_threads = int(sys.argv[6])
 ignored_prs_str = sys.argv[7]
-list_columns_str    = sys.argv[8]  if command == "list" and len(sys.argv) > 8  else ""
-list_sort_str       = sys.argv[9]  if command == "list" and len(sys.argv) > 9  else ""
-list_marks_file     = sys.argv[10] if command == "list" and len(sys.argv) > 10 else ""
-list_no_ai          = sys.argv[11] == "1" if command == "list" and len(sys.argv) > 11 else False
-list_ai_authors_str = sys.argv[12] if command == "list" and len(sys.argv) > 12 else ""
-list_filter_str     = sys.argv[13] if command == "list" and len(sys.argv) > 13 else ""
-pr_number = int(sys.argv[8]) if command != "list" and len(sys.argv) > 8 else None
-ai_authors_str = sys.argv[9] if command != "list" and len(sys.argv) > 9 else ""
-no_ai = sys.argv[10] == "1" if command != "list" and len(sys.argv) > 10 else False
-no_inline = sys.argv[11] == "1" if len(sys.argv) > 11 else False
-mark_timestamp = sys.argv[12] if len(sys.argv) > 12 else ""
-show_all = sys.argv[13] == "1" if len(sys.argv) > 13 else False
+author_names_str    = sys.argv[8]  if len(sys.argv) > 8  else ""
+list_columns_str    = sys.argv[9]  if command == "list" and len(sys.argv) > 9  else ""
+list_sort_str       = sys.argv[10] if command == "list" and len(sys.argv) > 10 else ""
+list_marks_file     = sys.argv[11] if command == "list" and len(sys.argv) > 11 else ""
+list_no_ai          = sys.argv[12] == "1" if command == "list" and len(sys.argv) > 12 else False
+list_ai_authors_str = sys.argv[13] if command == "list" and len(sys.argv) > 13 else ""
+list_filter_str     = sys.argv[14] if command == "list" and len(sys.argv) > 14 else ""
+pr_number = int(sys.argv[9]) if command != "list" and len(sys.argv) > 9 else None
+ai_authors_str = sys.argv[10] if command != "list" and len(sys.argv) > 10 else ""
+no_ai = sys.argv[11] == "1" if command != "list" and len(sys.argv) > 11 else False
+no_inline = sys.argv[12] == "1" if command != "list" and len(sys.argv) > 12 else False
+mark_timestamp = sys.argv[13] if command != "list" and len(sys.argv) > 13 else ""
+show_all = sys.argv[14] == "1" if command != "list" and len(sys.argv) > 14 else False
 
 ai_authors = set()
 if ai_authors_str:
@@ -163,6 +174,14 @@ if ai_authors_str:
 
 def is_ai_author(login):
     return login in ai_authors or login.removesuffix("[bot]") in ai_authors
+
+author_names = {}
+if author_names_str:
+    for _m in author_names_str.split("|"):
+        _m = _m.strip()
+        if "=" in _m:
+            _handle, _name = _m.split("=", 1)
+            author_names[_handle.strip()] = _name.strip()
 
 ignored = set()
 if ignored_str:
@@ -311,10 +330,14 @@ def fetch_all_prs(query):
             break
     return all_prs
 
-def get_author(pr):
+def get_login(pr):
     if pr.get("author") and pr["author"].get("login"):
         return pr["author"]["login"]
     return ""
+
+def get_author(pr):
+    login = get_login(pr)
+    return author_names.get(login, login)
 
 def fmt_date(d):
     if not d:
@@ -327,7 +350,7 @@ if command == "list":
     all_prs = fetch_all_prs(GRAPHQL_QUERY_LIGHT)
     all_prs.sort(key=lambda pr: pr["number"])
     all_prs = [pr for pr in all_prs
-               if get_author(pr) not in ignored
+               if get_login(pr) not in ignored
                and pr["number"] not in ignored_prs
                and not pr.get("isDraft", False)]
 
@@ -653,7 +676,8 @@ elif command == "comments":
     print("%-17s %-20s %-8s %s" % ("-" * 17, "-" * 20, "-" * 8, "-" * 60))
     for date, author, typ, body, indent in rows:
         summary = ("  " if indent else "") + body.split("\n")[0][:70]
-        print("%-17s %-20s %-8s %s" % (fmt_date(date), author[:20], typ, summary))
+        display = author_names.get(author, author)
+        print("%-17s %-20s %-8s %s" % (fmt_date(date), display[:20], typ, summary))
     if not rows:
         print("  No comments on this PR.")
 PYEOF
@@ -704,7 +728,7 @@ while true; do
             fi
             COLUMNS_ARG="${COLUMNS_ARG## }"
             COLUMNS_ARG="${COLUMNS_ARG%% }"
-            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS" "$FILTER_SPEC"
+            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$AUTHOR_NAMES" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS" "$FILTER_SPEC"
             ;;
         comments|c)
             load_config
@@ -718,7 +742,7 @@ while true; do
             else
                 MARK_TIMESTAMP=""
                 [[ -f "$MARKS_FILE" ]] && MARK_TIMESTAMP="$(grep "^${PR_ARG}," "$MARKS_FILE" | cut -d',' -f2 | tail -1)"
-                python3 "$PYTHON_SCRIPT" "comments" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$PR_ARG" "$AI_AUTHORS" "$NO_AI" "$NO_INLINE" "$MARK_TIMESTAMP" "$SHOW_ALL"
+                python3 "$PYTHON_SCRIPT" "comments" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$AUTHOR_NAMES" "$PR_ARG" "$AI_AUTHORS" "$NO_AI" "$NO_INLINE" "$MARK_TIMESTAMP" "$SHOW_ALL"
             fi
             ;;
         mark|m)
@@ -800,6 +824,7 @@ Config file ($CONFIG_FILE):
   ignore-author: user1, user2
   ignore-pr:     1234, 5678
   ai-author:     bot1, bot2
+  author-name:   handle1=Full Name, handle2=Full Name
 HELP
             ;;
         quit|exit|"")
