@@ -30,18 +30,18 @@ Commands:
 list columns (default: pr,title,author); commands and abbreviations are case-insensitive:
   COLUMN                ALIAS   NOTES
   ------                -----   -----
-  pull-request          PR      PR number
-  title                 TI
-  author                AU
-  loc                   LO      Scala lines added/removed
+  pull-request          P       PR number
+  title                 T
+  author                A
+  loc                   LOC     Scala lines added/removed
   num-comments          NC      Comments since mark (or total); --no-ai excludes bots
-  creation-date         CR      Date PR was opened
-  last-comment-time     LA      Time of most recent comment; --no-ai excludes bots
-  my-last-comment-time  MY      Time of your most recent comment; --no-ai excludes bots
-  mark                  MA      Your mark timestamp
+  creation-date         CD      Date PR was opened
+  last-comment-time     LCT     Time of most recent comment; --no-ai excludes bots
+  my-last-comment-time  MCT     Time of your most recent comment; --no-ai excludes bots
+  mark                  MK      Your mark timestamp
 
-  Prefix abbreviations are resolved unambiguously (e.g. 'AU' -> author).
-  Explicit short aliases: NC (num-comments), PR (pull-request).
+  Unambiguous prefixes of full column names also work (e.g. 'author' -> 'a').
+  Explicit aliases: NC, PR (pull-request), CD, LCT, MCT, MK.
 
   Boolean comparisons between timestamp columns:
     col1 OP col2   where OP is one of:  >  <  >=  <=  ==
@@ -406,7 +406,9 @@ if command == "list":
 
     KNOWN_COLS   = ["pull-request", "title", "author", "loc", "num-comments",
                     "creation-date", "last-comment-time", "my-last-comment-time", "mark"]
-    COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request"}
+    COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request",
+                    "cd": "creation-date", "lct": "last-comment-time",
+                    "mct": "my-last-comment-time", "mk": "mark"}
     COL_HEADERS  = {"pull-request": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
                     "num-comments": "NC", "creation-date": "CREATED",
                     "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
@@ -430,9 +432,9 @@ if command == "list":
 
     TIMESTAMP_COLS = {"creation-date", "last-comment-time", "my-last-comment-time", "mark"}
     COL_ABBREVS = {
-        "pull-request": "PR", "title": "TTL", "author": "AUTH", "loc": "LOC",
+        "pull-request": "P", "title": "T", "author": "A", "loc": "LOC",
         "num-comments": "NC", "creation-date": "CD",
-        "last-comment-time": "LC", "my-last-comment-time": "MLC", "mark": "MARK",
+        "last-comment-time": "LCT", "my-last-comment-time": "MCT", "mark": "MK",
     }
 
     def parse_col_spec(spec):
