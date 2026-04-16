@@ -202,58 +202,6 @@ query($owner: String!, $repo: String!, $cursor: String) {
 }
 """
 
-GRAPHQL_QUERY_FULL = """
-query($owner: String!, $repo: String!, $cursor: String) {
-  repository(owner: $owner, name: $repo) {
-    pullRequests(states: OPEN, first: 100, after: $cursor) {
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-      nodes {
-        number
-        title
-        isDraft
-        author {
-          login
-        }
-        reviews(first: 50) {
-          nodes {
-            author { login }
-            submittedAt
-            state
-          }
-        }
-        comments(first: 50) {
-          nodes {
-            author { login }
-            createdAt
-          }
-        }
-        reviewThreads(first: %d) {
-          totalCount
-          nodes {
-            comments(first: 20) {
-              nodes {
-                author { login }
-                createdAt
-              }
-            }
-          }
-        }
-        commits(last: 1) {
-          nodes {
-            commit {
-              committedDate
-            }
-          }
-        }
-      }
-    }
-  }
-}
-""" % max_threads
-
 GRAPHQL_QUERY_COMMENTS_ISSUE = """
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -367,59 +315,20 @@ def get_author(pr):
         return pr["author"]["login"]
     return ""
 
-def get_my_dates(pr):
-    dates = []
-    for r in pr.get("reviews", {}).get("nodes", []):
-        a = (r.get("author") or {}).get("login", "")
-        if a == gh_user and r.get("submittedAt"):
-            dates.append(r["submittedAt"])
-    for c in pr.get("comments", {}).get("nodes", []):
-        a = (c.get("author") or {}).get("login", "")
-        if a == gh_user and c.get("createdAt"):
-            dates.append(c["createdAt"])
-    for t in pr.get("reviewThreads", {}).get("nodes", []):
-        for c in t.get("comments", {}).get("nodes", []):
-            a = (c.get("author") or {}).get("login", "")
-            if a == gh_user and c.get("createdAt"):
-                dates.append(c["createdAt"])
-    return sorted(dates, reverse=True)
-
-def get_all_comment_dates(pr):
-    dates = []
-    for r in pr.get("reviews", {}).get("nodes", []):
-        if r.get("submittedAt") and r.get("state") in ("COMMENTED", "APPROVED", "CHANGES_REQUESTED"):
-            dates.append(r["submittedAt"])
-    for c in pr.get("comments", {}).get("nodes", []):
-        if c.get("createdAt"):
-            dates.append(c["createdAt"])
-    for t in pr.get("reviewThreads", {}).get("nodes", []):
-        for c in t.get("comments", {}).get("nodes", []):
-            if c.get("createdAt"):
-                dates.append(c["createdAt"])
-    return sorted(dates, reverse=True)
-
-def get_last_commit_date(pr):
-    commits = pr.get("commits", {}).get("nodes", [])
-    if commits:
-        return commits[-1].get("commit", {}).get("committedDate", "")
-    return ""
-
 def fmt_date(d):
     if not d:
         return "n/a"
     return d[:10] + " " + d[11:16]
 
 
-# Fetch and filter
+# Fetch and filter (only needed for list command)
 if command == "list":
     all_prs = fetch_all_prs(GRAPHQL_QUERY_LIGHT)
-else:
-    all_prs = fetch_all_prs(GRAPHQL_QUERY_FULL)
-all_prs.sort(key=lambda pr: pr["number"])
-all_prs = [pr for pr in all_prs
-           if get_author(pr) not in ignored
-           and pr["number"] not in ignored_prs
-           and not pr.get("isDraft", False)]
+    all_prs.sort(key=lambda pr: pr["number"])
+    all_prs = [pr for pr in all_prs
+               if get_author(pr) not in ignored
+               and pr["number"] not in ignored_prs
+               and not pr.get("isDraft", False)]
 
 if command == "list":
     import threading, os, datetime
@@ -593,43 +502,6 @@ if command == "list":
     for pr in all_prs:
         print(fmt_row([cell(c, pr) for c in cols]))
 
-elif command == "unreviewed":
-    print("%-6s %-60s %s" % ("PR", "TITLE", "AUTHOR"))
-    print("%-6s %-60s %s" % ("------", "-" * 60, "-" * 20))
-    found = 0
-    for pr in all_prs:
-        my_dates = get_my_dates(pr)
-        if not my_dates:
-            num = pr["number"]
-            title = pr["title"][:58]
-            author = get_author(pr)
-            print("#%-5s %-60s %s" % (num, title, author))
-            found += 1
-    if found == 0:
-        print("  None -- you have reviewed every open PR!")
-
-elif command == "reviewed":
-    print("%-6s %-42s %-20s %-20s %s" % (
-        "PR", "TITLE", "MY LAST COMMENT", "LAST COMMENT", "LAST COMMIT"))
-    print("%-6s %-42s %-20s %-20s %s" % (
-        "------", "-" * 42, "-" * 20, "-" * 20, "-" * 20))
-    found = 0
-    for pr in all_prs:
-        my_dates = get_my_dates(pr)
-        if not my_dates:
-            continue
-        found += 1
-        num = pr["number"]
-        title = pr["title"][:40]
-        my_last = fmt_date(my_dates[0])
-        all_dates = get_all_comment_dates(pr)
-        last_any = fmt_date(all_dates[0] if all_dates else "")
-        last_commit = fmt_date(get_last_commit_date(pr))
-        print("#%-5s %-42s %-20s %-20s %s" % (
-            num, title, my_last, last_any, last_commit))
-    if found == 0:
-        print("  None -- you have not reviewed any open PRs yet.")
-
 elif command == "comments":
     import threading
     reviews_query = GRAPHQL_QUERY_COMMENTS_REVIEWS_NO_INLINE if no_inline else GRAPHQL_QUERY_COMMENTS_REVIEWS
@@ -717,7 +589,7 @@ PYEOF
 FOCUSED_PR=""
 MARKS_FILE="$HOME/.pr-status/marks.csv"
 
-echo "$OWNER/$REPO_NAME  (commands: list, unreviewed, reviewed, comments <PR>)"
+echo "$OWNER/$REPO_NAME  (commands: list, comments <PR>)"
 while true; do
     if [[ -n "$FOCUSED_PR" ]]; then
         printf "#%s> " "$FOCUSED_PR"
@@ -750,14 +622,6 @@ while true; do
             COLUMNS_ARG="${COLUMNS_ARG## }"
             COLUMNS_ARG="${COLUMNS_ARG%% }"
             python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS"
-            ;;
-        unreviewed|u)
-            load_config
-            python3 "$PYTHON_SCRIPT" "unreviewed" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
-            ;;
-        reviewed|r)
-            load_config
-            python3 "$PYTHON_SCRIPT" "reviewed" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS"
             ;;
         comments|c)
             load_config
@@ -814,8 +678,6 @@ Commands:
                         (default: pr,title,author); prefix abbreviations ok
                         --sort col,col,...  sort by columns (loc/nc descending, dates ascending)
                         --no-ai            exclude AI authors from comment counts/times
-  unreviewed (u)        Show PRs you haven't reviewed
-  reviewed (r)          Show PRs you've reviewed with timestamps
   comments (c) [PR]     Show comments for a PR [--no-ai] [--no-inline] [--all]
   mark (m) [PR]         Record current time for PR; comments hides older threads
   unmark (n) [PR]       Remove mark for PR
@@ -836,7 +698,7 @@ HELP
             break
             ;;
         *)
-            echo "Unknown command '$CMD'. Use: list, unreviewed, reviewed, comments, help" >&2
+            echo "Unknown command '$CMD'. Use: list, comments, help" >&2
             ;;
     esac
 done
