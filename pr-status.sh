@@ -40,8 +40,7 @@ list columns (default: pr,title,author); commands and abbreviations are case-ins
   my-last-comment-time  MCT     Time of your most recent comment; --no-ai excludes bots
   mark                  MK      Your mark timestamp
 
-  Unambiguous prefixes of full column names also work (e.g. 'author' -> 'a').
-  Explicit aliases: NC, PR (pull-request), CD, LCT, MCT, MK.
+  Unambiguous prefixes of full column names also work (e.g. 'cre' for 'creation-date').
 
   Boolean comparisons between timestamp columns:
     col1 OP col2   where OP is one of:  >  <  >=  <=  ==
