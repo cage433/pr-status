@@ -331,7 +331,7 @@ if command == "list":
                and not pr.get("isDraft", False)]
 
 if command == "list":
-    import threading, os, datetime
+    import re, threading, os, datetime
     if list_no_ai and list_ai_authors_str:
         ai_authors = set()
         for _a in list_ai_authors_str.split("|"):
@@ -371,8 +371,47 @@ if command == "list":
             print("Unknown column: %r" % name, file=sys.stderr); sys.exit(1)
         print("Ambiguous column %r (matches: %s)" % (name, ", ".join(matches)), file=sys.stderr); sys.exit(1)
 
-    cols      = [resolve_col(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pr", "title", "author"]
-    sort_cols = [resolve_col(c) for c in list_sort_str.split(",")    if c.strip()] if list_sort_str    else []
+    TIMESTAMP_COLS = {"creation-date", "last-comment-time", "my-last-comment-time", "mark"}
+    COL_ABBREVS = {
+        "pr": "PR", "title": "TTL", "author": "AUTH", "loc": "LOC",
+        "num-comments": "NC", "creation-date": "CD",
+        "last-comment-time": "LC", "my-last-comment-time": "MLC", "mark": "MARK",
+    }
+
+    def parse_col_spec(spec):
+        spec = spec.strip()
+        m = re.match(r'^(.+?)\s*(>|<)\s*(.+)$', spec)
+        if m:
+            left  = resolve_col(m.group(1).strip())
+            right = resolve_col(m.group(3).strip())
+            op    = m.group(2)
+            for side, col in (("left", left), ("right", right)):
+                if col not in TIMESTAMP_COLS:
+                    print("Column %r is not a timestamp column" % col, file=sys.stderr); sys.exit(1)
+            return ("cmp", left, op, right)
+        return resolve_col(spec)
+
+    def col_header(spec):
+        if isinstance(spec, tuple):
+            _, left, op, right = spec
+            return "%s%s%s" % (COL_ABBREVS[left], op, COL_ABBREVS[right])
+        return COL_HEADERS[spec]
+
+    def col_width(spec):
+        if isinstance(spec, tuple):
+            return max(len(col_header(spec)), 5)  # 5 for "false"
+        return COL_WIDTHS[spec]
+
+    cols      = [parse_col_spec(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pr", "title", "author"]
+    sort_cols = [resolve_col(c)    for c in list_sort_str.split(",")    if c.strip()] if list_sort_str    else []
+
+    def _referenced_cols():
+        names = set()
+        for s in cols:
+            if isinstance(s, tuple): names.add(s[1]); names.add(s[3])
+            else: names.add(s)
+        return names | set(sort_cols)
+    _all_cols = _referenced_cols()
 
     # Read marks file
     marks = {}
@@ -387,7 +426,7 @@ if command == "list":
                         pass
 
     loc_results = {}
-    if "loc" in cols or "loc" in sort_cols:
+    if "loc" in _all_cols:
         def fetch_scala_loc(pr_num):
             cmd = ["gh", "api", "--paginate",
                    "repos/%s/%s/pulls/%d/files?per_page=100" % (owner, repo, pr_num),
@@ -409,7 +448,7 @@ if command == "list":
 
     COMMENT_COLS = {"num-comments", "last-comment-time", "my-last-comment-time"}
     comment_data = {}
-    if COMMENT_COLS & (set(cols) | set(sort_cols)):
+    if COMMENT_COLS & _all_cols:
         def fetch_comment_data(pr_num):
             cmd = ["gh", "api", "graphql",
                    "-f", "query=" + GRAPHQL_QUERY_COMMENT_COUNTS,
@@ -460,6 +499,13 @@ if command == "list":
                 if c.get("createdAt"): dates.append(c["createdAt"])
         return max(dates) if dates else ""
 
+    def timestamp_val(col, pr):
+        if col == "creation-date":       return pr.get("createdAt", "")
+        if col == "last-comment-time":   return get_last_comment(pr["number"])
+        if col == "my-last-comment-time":return get_last_comment(pr["number"], user_only=True)
+        if col == "mark":                return marks.get(pr["number"], "")
+        return ""
+
     if sort_cols:
         def sort_key(pr):
             key = []
@@ -478,7 +524,14 @@ if command == "list":
             return key
         all_prs.sort(key=sort_key)
 
-    def cell(col, pr):
+    def cell(spec, pr):
+        if isinstance(spec, tuple):
+            _, left, op, right = spec
+            lv = timestamp_val(left, pr)
+            rv = timestamp_val(right, pr)
+            if not lv or not rv: return "n/a"
+            return "true" if (lv > rv if op == ">" else lv < rv) else "false"
+        col = spec
         if col == "pr":                  return "#%-5s" % pr["number"]
         if col == "title":               return pr["title"][:58]
         if col == "author":              return get_author(pr)
@@ -493,12 +546,12 @@ if command == "list":
             return str(count_since(comment_data.get(pr["number"], {}), marks.get(pr["number"])))
 
     def fmt_row(vals):
-        parts = ["%-*s" % (COL_WIDTHS[col], val) if i < len(cols) - 1 else val
+        parts = ["%-*s" % (col_width(col), val) if i < len(cols) - 1 else val
                  for i, (col, val) in enumerate(zip(cols, vals))]
         return " ".join(parts)
 
-    print(fmt_row([COL_HEADERS[c] for c in cols]))
-    print(fmt_row(["-" * COL_WIDTHS[c] for c in cols]))
+    print(fmt_row([col_header(c) for c in cols]))
+    print(fmt_row(["-" * col_width(c) for c in cols]))
     for pr in all_prs:
         print(fmt_row([cell(c, pr) for c in cols]))
 
@@ -674,7 +727,9 @@ while true; do
 Commands:
   list (l) [cols]       List PRs; cols = comma-separated from:
                         pr, title, author, loc, num-comments (nc),
-                        creation-date, last-comment-time, my-last-comment-time
+                        creation-date, last-comment-time, my-last-comment-time, mark
+                        Boolean comparison: col1>col2 or col1<col2 (timestamp cols only)
+                          e.g. last-comment>my-last-comment  (true/false/n/a)
                         (default: pr,title,author); prefix abbreviations ok
                         --sort col,col,...  sort by columns (loc/nc descending, dates ascending)
                         --no-ai            exclude AI authors from comment counts/times
