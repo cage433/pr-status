@@ -44,7 +44,7 @@ list columns (default: pr,title,author); commands and abbreviations are case-ins
 
   Boolean comparisons between timestamp columns:
     col1 OP col2   where OP is one of:  >  <  >=  <=  ==
-    Returns true / false / n/a (n/a when either side has no value)
+    Returns one of true, false, n/a
     Example:  last-comment>my-last-comment
     Header shown as abbreviated column names, e.g. LA>MY
 
