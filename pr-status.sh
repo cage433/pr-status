@@ -727,28 +727,45 @@ while true; do
         help|h)
             cat <<HELP
 Commands:
-  list (l) [cols]       List PRs; cols = comma-separated from:
-                        pr, title, author, loc, num-comments (nc),
-                        creation-date, last-comment-time, my-last-comment-time, mark
-                        Boolean comparison: col1>col2 or col1<col2 (timestamp cols only)
-                          e.g. last-comment>my-last-comment  (true/false/n/a)
-                        (default: pr,title,author); prefix abbreviations ok
-                        --sort col,col,...  sort by columns (loc/nc descending, dates ascending)
-                        --no-ai            exclude AI authors from comment counts/times
-  comments (c) [PR]     Show comments for a PR [--no-ai] [--no-inline] [--all]
-  mark (m) [PR]         Record current time for PR; comments hides older threads
+  list (l) [cols] [--sort cols] [--no-ai]
+  comments (c) [PR] [--no-ai] [--no-inline] [--all]
+  mark (m) [PR]         Record current time for PR (comments hides older threads)
   unmark (n) [PR]       Remove mark for PR
   <number>              Focus on a specific PR (prompt changes to #PR>)
   up                    Stop focusing on the current PR
   help (h)              Show this help message
   quit / exit           Exit
 
-Config file format ($CONFIG_FILE):
-  owner: OWNER
-  repo-name: REPO_NAME
-  ignore-author: user1, user2, user3
-  ignore-pr: 1234, 5678
-  ai-author: bot1, bot2
+list columns (default: pr,title,author):
+  COLUMN                ABBREV  NOTES
+  ------                ------  -----
+  pr                    pr      PR number
+  title                 ti
+  author                au
+  loc                   lo      Scala lines added/removed
+  num-comments          nc      Comments since mark (or total); --no-ai excludes bots
+  creation-date         cr      Date PR was opened
+  last-comment-time     la      Time of most recent comment; --no-ai excludes bots
+  my-last-comment-time  my      Time of your most recent comment; --no-ai excludes bots
+  mark                  ma      Your mark timestamp
+
+  Prefix abbreviations are resolved unambiguously (e.g. 'au' -> author).
+  Explicit short aliases: nc (num-comments).
+
+  Boolean comparisons between timestamp columns:
+    col1 OP col2   where OP is one of:  >  <  >=  <=  ==
+    Returns true / false / n/a (n/a when either side has no value)
+    Example:  last-comment>my-last-comment
+    Header shown as abbreviated column names, e.g. LA>MY
+
+  --sort col,col,...   loc and nc sort descending; all others ascending
+
+Config file ($CONFIG_FILE):
+  owner:         OWNER
+  repo-name:     REPO_NAME
+  ignore-author: user1, user2
+  ignore-pr:     1234, 5678
+  ai-author:     bot1, bot2
 HELP
             ;;
         quit|exit|"")
