@@ -697,6 +697,7 @@ while true; do
     fi
     IFS= read -r INPUT || { echo; break; }
     CMD="${INPUT%% *}"
+    CMD="${CMD,,}"
     ARG="${INPUT#* }"
     [[ "$ARG" == "$INPUT" ]] && ARG=""
     ARG="${ARG#\#}"
@@ -785,33 +786,33 @@ while true; do
         help|h)
             cat <<HELP
 Commands:
-  list (l) [cols] [--sort cols] [--filter col=val,...] [--no-ai]
-  comments (c) [PR] [--no-ai] [--no-inline] [--all]
-  mark (m) [PR]         Record current time for PR (comments hides older threads)
-  unmark (n) [PR]       Remove mark for PR
+  list (L) [cols] [--sort cols] [--filter col=val,...] [--no-ai]
+  comments (C) [PR] [--no-ai] [--no-inline] [--all]
+  mark (M) [PR]         Record current time for PR (comments hides older threads)
+  unmark (N) [PR]       Remove mark for PR
   <number>              Focus on a specific PR (prompt changes to #PR>)
   up                    Stop focusing on the current PR
-  help (h)              Show this help message
+  help (H)              Show this help message
   quit / exit           Exit
 
-list columns (default: pr,title,author):
+list columns (default: pr,title,author); commands and abbreviations are case-insensitive:
   COLUMN                ABBREV  NOTES
   ------                ------  -----
-  pr                    pr      PR number
-  title                 ti
-  author                au
-  loc                   lo      Scala lines added/removed
-  num-comments          nc      Comments since mark (or total); --no-ai excludes bots
-  creation-date         cr      Date PR was opened
-  last-comment-time     la      Time of most recent comment; --no-ai excludes bots
-  my-last-comment-time  my      Time of your most recent comment; --no-ai excludes bots
-  mark                  ma      Your mark timestamp
+  pr                    PR      PR number
+  title                 TI
+  author                AU
+  loc                   LO      Scala lines added/removed
+  num-comments          NC      Comments since mark (or total); --no-ai excludes bots
+  creation-date         CR      Date PR was opened
+  last-comment-time     LA      Time of most recent comment; --no-ai excludes bots
+  my-last-comment-time  MY      Time of your most recent comment; --no-ai excludes bots
+  mark                  MA      Your mark timestamp
 
   Timestamp columns show YYYY-MM-DD; if two or more timestamp values in the same
   row share a date, those values show YYYY-MM-DD HH:MM to distinguish them.
 
-  Prefix abbreviations are resolved unambiguously (e.g. 'au' -> author).
-  Explicit short aliases: nc (num-comments).
+  Prefix abbreviations are resolved unambiguously (e.g. 'AU' -> author).
+  Explicit short aliases: NC (num-comments).
 
   Boolean comparisons between timestamp columns:
     col1 OP col2   where OP is one of:  >  <  >=  <=  ==
