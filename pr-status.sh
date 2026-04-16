@@ -40,9 +40,6 @@ list columns (default: pr,title,author); commands and abbreviations are case-ins
   my-last-comment-time  MY      Time of your most recent comment; --no-ai excludes bots
   mark                  MA      Your mark timestamp
 
-  Timestamp columns show YYYY-MM-DD; if two or more timestamp values in the same
-  row share a date, those values show YYYY-MM-DD HH:MM to distinguish them.
-
   Prefix abbreviations are resolved unambiguously (e.g. 'AU' -> author).
   Explicit short aliases: NC (num-comments), PR (pull-request).
 
