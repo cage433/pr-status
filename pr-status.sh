@@ -141,11 +141,14 @@ owner = sys.argv[4]
 repo = sys.argv[5]
 max_threads = int(sys.argv[6])
 ignored_prs_str = sys.argv[7]
-list_columns_str = sys.argv[8] if command == "list" and len(sys.argv) > 8 else ""
-list_sort_str    = sys.argv[9] if command == "list" and len(sys.argv) > 9 else ""
+list_columns_str    = sys.argv[8]  if command == "list" and len(sys.argv) > 8  else ""
+list_sort_str       = sys.argv[9]  if command == "list" and len(sys.argv) > 9  else ""
+list_marks_file     = sys.argv[10] if command == "list" and len(sys.argv) > 10 else ""
+list_no_ai          = sys.argv[11] == "1" if command == "list" and len(sys.argv) > 11 else False
+list_ai_authors_str = sys.argv[12] if command == "list" and len(sys.argv) > 12 else ""
 pr_number = int(sys.argv[8]) if command != "list" and len(sys.argv) > 8 else None
 ai_authors_str = sys.argv[9] if command != "list" and len(sys.argv) > 9 else ""
-no_ai = sys.argv[10] == "1" if len(sys.argv) > 10 else False
+no_ai = sys.argv[10] == "1" if command != "list" and len(sys.argv) > 10 else False
 no_inline = sys.argv[11] == "1" if len(sys.argv) > 11 else False
 mark_timestamp = sys.argv[12] if len(sys.argv) > 12 else ""
 show_all = sys.argv[13] == "1" if len(sys.argv) > 13 else False
@@ -189,6 +192,7 @@ query($owner: String!, $repo: String!, $cursor: String) {
         number
         title
         isDraft
+        createdAt
         author {
           login
         }
@@ -310,6 +314,28 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 """
 
+GRAPHQL_QUERY_COMMENT_COUNTS = """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      comments(first: 100) {
+        nodes { author { login } createdAt }
+      }
+      reviews(first: 100) {
+        nodes { author { login } submittedAt }
+      }
+      reviewThreads(first: 100) {
+        nodes {
+          comments(first: 50) {
+            nodes { author { login } createdAt }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 def fetch_all_prs(query):
     all_prs = []
     cursor = None
@@ -396,13 +422,37 @@ all_prs = [pr for pr in all_prs
            and not pr.get("isDraft", False)]
 
 if command == "list":
-    import threading
-    KNOWN_COLS = ["pr", "title", "author", "loc"]
-    COL_HEADERS = {"pr": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC"}
-    COL_WIDTHS  = {"pr": 6,    "title": 60,       "author": 20,        "loc": 15}
+    import threading, os, datetime
+    if list_no_ai and list_ai_authors_str:
+        ai_authors = set()
+        for _a in list_ai_authors_str.split("|"):
+            _a = _a.strip()
+            if _a:
+                ai_authors.add(_a)
+    _now = datetime.datetime.now(datetime.timezone.utc)
+    _week_ago = (_now - datetime.timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    def fmt_date_only(d):
+        return d[:10] if d else "n/a"
+
+    def fmt_recent(d, blank_if_empty=False):
+        if not d: return "" if blank_if_empty else "n/a"
+        return (d[:10] + " " + d[11:16]) if d > _week_ago else d[:10]
+    KNOWN_COLS   = ["pr", "title", "author", "loc", "num-comments",
+                    "creation-date", "last-comment-time", "my-last-comment-time", "mark"]
+    COL_ALIASES  = {"nc": "num-comments"}
+    COL_HEADERS  = {"pr": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
+                    "num-comments": "NC", "creation-date": "CREATED",
+                    "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
+                    "mark": "MARK"}
+    COL_WIDTHS   = {"pr": 6,    "title": 60,       "author": 20,       "loc": 15,
+                    "num-comments": 4, "creation-date": 11,
+                    "last-comment-time": 17, "my-last-comment-time": 17, "mark": 17}
 
     def resolve_col(name):
         name = name.lower().strip()
+        if name in COL_ALIASES:
+            return COL_ALIASES[name]
         matches = [c for c in KNOWN_COLS if c.startswith(name)]
         if len(matches) == 1:
             return matches[0]
@@ -414,6 +464,18 @@ if command == "list":
 
     cols      = [resolve_col(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pr", "title", "author"]
     sort_cols = [resolve_col(c) for c in list_sort_str.split(",")    if c.strip()] if list_sort_str    else []
+
+    # Read marks file
+    marks = {}
+    if list_marks_file and os.path.isfile(list_marks_file):
+        with open(list_marks_file) as _f:
+            for _line in _f:
+                _parts = _line.strip().split(",", 1)
+                if len(_parts) == 2:
+                    try:
+                        marks[int(_parts[0])] = _parts[1].strip()
+                    except ValueError:
+                        pass
 
     loc_results = {}
     if "loc" in cols or "loc" in sort_cols:
@@ -436,26 +498,90 @@ if command == "list":
         for t in threads: t.start()
         for t in threads: t.join()
 
+    COMMENT_COLS = {"num-comments", "last-comment-time", "my-last-comment-time"}
+    comment_data = {}
+    if COMMENT_COLS & (set(cols) | set(sort_cols)):
+        def fetch_comment_data(pr_num):
+            cmd = ["gh", "api", "graphql",
+                   "-f", "query=" + GRAPHQL_QUERY_COMMENT_COUNTS,
+                   "-f", "owner=" + owner,
+                   "-f", "repo=" + repo,
+                   "-F", "number=" + str(pr_num)]
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            comment_data[pr_num] = (json.loads(r.stdout)["data"]["repository"]["pullRequest"] or {}) \
+                                   if r.returncode == 0 else {}
+
+        threads = [threading.Thread(target=fetch_comment_data, args=(pr["number"],))
+                   for pr in all_prs]
+        for t in threads: t.start()
+        for t in threads: t.join()
+
+    def count_since(data, since):
+        n = 0
+        for c in data.get("comments", {}).get("nodes", []):
+            if list_no_ai and is_ai_author((c.get("author") or {}).get("login", "")): continue
+            if not since or c.get("createdAt", "") >= since: n += 1
+        for rev in data.get("reviews", {}).get("nodes", []):
+            if list_no_ai and is_ai_author((rev.get("author") or {}).get("login", "")): continue
+            if not since or rev.get("submittedAt", "") >= since: n += 1
+        for thread in data.get("reviewThreads", {}).get("nodes", []):
+            for c in thread.get("comments", {}).get("nodes", []):
+                if list_no_ai and is_ai_author((c.get("author") or {}).get("login", "")): continue
+                if not since or c.get("createdAt", "") >= since: n += 1
+        return n
+
+    def get_last_comment(pr_num, user_only=False):
+        data = comment_data.get(pr_num, {})
+        dates = []
+        for c in data.get("comments", {}).get("nodes", []):
+            login = (c.get("author") or {}).get("login", "")
+            if user_only and login != gh_user: continue
+            if list_no_ai and is_ai_author(login): continue
+            if c.get("createdAt"): dates.append(c["createdAt"])
+        for rev in data.get("reviews", {}).get("nodes", []):
+            login = (rev.get("author") or {}).get("login", "")
+            if user_only and login != gh_user: continue
+            if list_no_ai and is_ai_author(login): continue
+            if rev.get("submittedAt"): dates.append(rev["submittedAt"])
+        for thread in data.get("reviewThreads", {}).get("nodes", []):
+            for c in thread.get("comments", {}).get("nodes", []):
+                login = (c.get("author") or {}).get("login", "")
+                if user_only and login != gh_user: continue
+                if list_no_ai and is_ai_author(login): continue
+                if c.get("createdAt"): dates.append(c["createdAt"])
+        return max(dates) if dates else ""
+
     if sort_cols:
         def sort_key(pr):
             key = []
             for col in sort_cols:
-                if col == "pr":     key.append(pr["number"])
-                elif col == "title":  key.append(pr["title"].lower())
-                elif col == "author": key.append(get_author(pr).lower())
+                if col == "pr":                    key.append(pr["number"])
+                elif col == "title":               key.append(pr["title"].lower())
+                elif col == "author":              key.append(get_author(pr).lower())
+                elif col == "creation-date":       key.append(pr.get("createdAt", "Z"))
+                elif col == "last-comment-time":   key.append(get_last_comment(pr["number"]) or "Z")
+                elif col == "my-last-comment-time":key.append(get_last_comment(pr["number"], user_only=True) or "Z")
                 elif col == "loc":
                     adds, dels = loc_results.get(pr["number"], (0, 0))
                     key.append(-(adds + dels))
+                elif col == "num-comments":
+                    key.append(-count_since(comment_data.get(pr["number"], {}), marks.get(pr["number"])))
             return key
         all_prs.sort(key=sort_key)
 
     def cell(col, pr):
-        if col == "pr":     return "#%-5s" % pr["number"]
-        if col == "title":  return pr["title"][:58]
-        if col == "author": return get_author(pr)
+        if col == "pr":                  return "#%-5s" % pr["number"]
+        if col == "title":               return pr["title"][:58]
+        if col == "author":              return get_author(pr)
+        if col == "creation-date":       return fmt_date_only(pr.get("createdAt", ""))
+        if col == "last-comment-time":   return fmt_recent(get_last_comment(pr["number"]))
+        if col == "my-last-comment-time":return fmt_recent(get_last_comment(pr["number"], user_only=True), blank_if_empty=True)
+        if col == "mark":                return fmt_recent(marks.get(pr["number"], ""), blank_if_empty=True)
         if col == "loc":
             adds, dels = loc_results.get(pr["number"], (0, 0))
             return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
+        if col == "num-comments":
+            return str(count_since(comment_data.get(pr["number"], {}), marks.get(pr["number"])))
 
     def fmt_row(vals):
         parts = ["%-*s" % (COL_WIDTHS[col], val) if i < len(cols) - 1 else val
@@ -611,15 +737,19 @@ while true; do
     case "$CMD" in
         list|l)
             load_config
+            NO_AI=0; [[ "$ARG" == *"--no-ai"* ]] && NO_AI=1
             SORT_COLS=""
             if [[ "$ARG" =~ --sort[[:space:]]+([^[:space:]]+) ]]; then
                 SORT_COLS="${BASH_REMATCH[1]}"
             fi
             COLUMNS_ARG="$ARG"
+            [[ "$COLUMNS_ARG" == *" --no-ai"* ]] && COLUMNS_ARG="${COLUMNS_ARG/ --no-ai/}"
+            [[ "$COLUMNS_ARG" == "--no-ai"* ]] && COLUMNS_ARG="${COLUMNS_ARG#--no-ai}"
             [[ "$COLUMNS_ARG" == *" --sort"* ]] && COLUMNS_ARG="${COLUMNS_ARG%% --sort*}"
             [[ "$COLUMNS_ARG" == "--sort"* ]] && COLUMNS_ARG=""
+            COLUMNS_ARG="${COLUMNS_ARG## }"
             COLUMNS_ARG="${COLUMNS_ARG%% }"
-            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$COLUMNS_ARG" "$SORT_COLS"
+            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS"
             ;;
         unreviewed|u)
             load_config
@@ -678,9 +808,12 @@ while true; do
         help|h)
             cat <<HELP
 Commands:
-  list (l) [cols]       List PRs; cols = comma-separated from: pr,title,author,loc
-                        (default: pr,title,author); abbreviations ok
-                        --sort col,col,...  sort by columns (loc sorts descending)
+  list (l) [cols]       List PRs; cols = comma-separated from:
+                        pr, title, author, loc, num-comments (nc),
+                        creation-date, last-comment-time, my-last-comment-time
+                        (default: pr,title,author); prefix abbreviations ok
+                        --sort col,col,...  sort by columns (loc/nc descending, dates ascending)
+                        --no-ai            exclude AI authors from comment counts/times
   unreviewed (u)        Show PRs you haven't reviewed
   reviewed (r)          Show PRs you've reviewed with timestamps
   comments (c) [PR]     Show comments for a PR [--no-ai] [--no-inline] [--all]
