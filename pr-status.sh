@@ -157,7 +157,7 @@ list_sort_str       = sys.argv[10] if command == "list" and len(sys.argv) > 10 e
 list_marks_file     = sys.argv[11] if command == "list" and len(sys.argv) > 11 else ""
 list_no_ai          = sys.argv[12] == "1" if command == "list" and len(sys.argv) > 12 else False
 list_ai_authors_str = sys.argv[13] if command == "list" and len(sys.argv) > 13 else ""
-list_filter_str     = sys.argv[14] if command == "list" and len(sys.argv) > 14 else ""
+list_filters_str    = sys.argv[14] if command == "list" and len(sys.argv) > 14 else ""
 pr_number = int(sys.argv[9]) if command != "list" and len(sys.argv) > 9 else None
 ai_authors_str = sys.argv[10] if command != "list" and len(sys.argv) > 10 else ""
 no_ai = sys.argv[11] == "1" if command != "list" and len(sys.argv) > 11 else False
@@ -424,18 +424,18 @@ if command == "list":
     cols      = [parse_col_spec(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pr", "title", "author"]
     sort_cols = [resolve_col(c)    for c in list_sort_str.split(",")    if c.strip()] if list_sort_str    else []
 
-    filter_col_spec = None
-    filter_vals = set()
-    if list_filter_str:
-        _fparts = re.split(r'(?<![><=])=(?!=)', list_filter_str, maxsplit=1)
+    filters = []
+    for _fspec in (list_filters_str.split(";;") if list_filters_str else []):
+        _fspec = _fspec.strip()
+        if not _fspec: continue
+        _fparts = re.split(r'(?<![><=])=(?!=)', _fspec, maxsplit=1)
         if len(_fparts) != 2:
-            print("Invalid --filter (expected col=val,...): %r" % list_filter_str, file=sys.stderr); sys.exit(1)
-        filter_col_spec = parse_col_spec(_fparts[0].strip())
-        filter_vals = {v.strip() for v in _fparts[1].split(",")}
+            print("Invalid --filter (expected col=val,...): %r" % _fspec, file=sys.stderr); sys.exit(1)
+        filters.append((parse_col_spec(_fparts[0].strip()), {v.strip() for v in _fparts[1].split(",")}))
 
     def _referenced_cols():
         names = set()
-        for s in cols + ([filter_col_spec] if filter_col_spec is not None else []):
+        for s in cols + [fc for fc, _ in filters]:
             if isinstance(s, tuple): names.add(s[1]); names.add(s[3])
             else: names.add(s)
         return names | set(sort_cols)
@@ -590,8 +590,9 @@ if command == "list":
                  for i, (col, val) in enumerate(zip(cols, vals))]
         return " ".join(parts)
 
-    if filter_col_spec is not None:
-        all_prs = [pr for pr in all_prs if cell(filter_col_spec, pr, compute_show_time(pr)) in filter_vals]
+    if filters:
+        all_prs = [pr for pr in all_prs
+                   if all(cell(fc, pr, compute_show_time(pr)) in fv for fc, fv in filters)]
 
     print(fmt_row([col_header(c) for c in cols]))
     print(fmt_row(["-" * col_width(c) for c in cols]))
@@ -712,23 +713,28 @@ while true; do
             if [[ "$ARG" =~ --sort[[:space:]]+([^[:space:]]+) ]]; then
                 SORT_COLS="${BASH_REMATCH[1]}"
             fi
-            FILTER_SPEC=""
-            if [[ "$ARG" =~ --filter[[:space:]]+([^[:space:]]+) ]]; then
-                FILTER_SPEC="${BASH_REMATCH[1]}"
-            fi
+            FILTER_SPECS=""
+            _scan="$ARG"
+            while [[ "$_scan" =~ --filter[[:space:]]+([^[:space:]]+) ]]; do
+                _spec="${BASH_REMATCH[1]}"
+                [[ -n "$FILTER_SPECS" ]] && FILTER_SPECS="${FILTER_SPECS};;"
+                FILTER_SPECS="${FILTER_SPECS}${_spec}"
+                _scan="${_scan/--filter $_spec/}"
+            done
             COLUMNS_ARG="$ARG"
             [[ "$COLUMNS_ARG" == *" --no-ai"* ]] && COLUMNS_ARG="${COLUMNS_ARG/ --no-ai/}"
             [[ "$COLUMNS_ARG" == "--no-ai"* ]] && COLUMNS_ARG="${COLUMNS_ARG#--no-ai}"
             [[ "$COLUMNS_ARG" == *" --sort"* ]] && COLUMNS_ARG="${COLUMNS_ARG%% --sort*}"
             [[ "$COLUMNS_ARG" == "--sort"* ]] && COLUMNS_ARG=""
-            if [[ -n "$FILTER_SPEC" ]]; then
-                COLUMNS_ARG="${COLUMNS_ARG/ --filter ${FILTER_SPEC}/}"
-                COLUMNS_ARG="${COLUMNS_ARG/--filter ${FILTER_SPEC} /}"
-                COLUMNS_ARG="${COLUMNS_ARG/--filter ${FILTER_SPEC}/}"
-            fi
+            while [[ "$COLUMNS_ARG" =~ --filter[[:space:]]+([^[:space:]]+) ]]; do
+                _spec="${BASH_REMATCH[1]}"
+                COLUMNS_ARG="${COLUMNS_ARG/ --filter $_spec/}"
+                COLUMNS_ARG="${COLUMNS_ARG/--filter $_spec /}"
+                COLUMNS_ARG="${COLUMNS_ARG/--filter $_spec/}"
+            done
             COLUMNS_ARG="${COLUMNS_ARG## }"
             COLUMNS_ARG="${COLUMNS_ARG%% }"
-            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$AUTHOR_NAMES" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS" "$FILTER_SPEC"
+            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$AUTHOR_NAMES" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS" "$FILTER_SPECS"
             ;;
         comments|c)
             load_config
@@ -816,7 +822,8 @@ list columns (default: pr,title,author):
   --sort col,col,...   loc and nc sort descending; all others ascending
   --filter col=v1,v2  keep only rows where col's value is one of v1, v2, ...
                        col can be any column including a comparison expression
-                       Example: --filter last-comment>my-last-comment=false,n/a
+                       Multiple --filter flags are ANDed together
+                       Example: --filter la>my=false,n/a --filter nc=0
 
 Config file ($CONFIG_FILE):
   owner:         OWNER
