@@ -380,7 +380,7 @@ if command == "list":
 
     def parse_col_spec(spec):
         spec = spec.strip()
-        m = re.match(r'^(.+?)\s*(>|<)\s*(.+)$', spec)
+        m = re.match(r'^(.+?)\s*(>=|<=|==|>|<)\s*(.+)$', spec)
         if m:
             left  = resolve_col(m.group(1).strip())
             right = resolve_col(m.group(3).strip())
@@ -530,7 +530,9 @@ if command == "list":
             lv = timestamp_val(left, pr)
             rv = timestamp_val(right, pr)
             if not lv or not rv: return "n/a"
-            return "true" if (lv > rv if op == ">" else lv < rv) else "false"
+            result = (lv > rv if op == ">" else lv < rv if op == "<" else
+                      lv >= rv if op == ">=" else lv <= rv if op == "<=" else lv == rv)
+            return "true" if result else "false"
         col = spec
         if col == "pr":                  return "#%-5s" % pr["number"]
         if col == "title":               return pr["title"][:58]
