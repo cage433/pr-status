@@ -7,7 +7,7 @@ GH_USER="$(gh api user --jq '.login' 2>/dev/null)" || {
     exit 1
 }
 
-usage() {
+show_help() {
     cat <<EOF
 Usage: $SCRIPT_NAME [-r OWNER/REPO] [-c CONFIG] [-t THREADS]
 
@@ -17,14 +17,55 @@ Options:
   -t THREADS    Max review threads to fetch per PR (default: 50)
   -h            Show this help message
 
-Config file format:
-  owner: OWNER
-  repo-name: REPO_NAME
-  ignore-author: user1, user2, user3
-  ignore-pr: 1234, 5678
-  ai-author: bot1, bot2
+Commands:
+  list (L) [cols] [--sort cols] [--filter col=val,...] [--no-ai]
+  comments (C) [PR] [--no-ai] [--no-inline] [--all]
+  mark (M) [PR]         Record current time for PR (comments hides older threads)
+  unmark (N) [PR]       Remove mark for PR
+  <number>              Focus on a specific PR (prompt changes to #PR>)
+  up                    Stop focusing on the current PR
+  help (H)              Show this help message
+  quit / exit           Exit
+
+list columns (default: pr,title,author); commands and abbreviations are case-insensitive:
+  COLUMN                ABBREV  NOTES
+  ------                ------  -----
+  pull-request          PR      PR number (alias: PR)
+  title                 TI
+  author                AU
+  loc                   LO      Scala lines added/removed
+  num-comments          NC      Comments since mark (or total); --no-ai excludes bots
+  creation-date         CR      Date PR was opened
+  last-comment-time     LA      Time of most recent comment; --no-ai excludes bots
+  my-last-comment-time  MY      Time of your most recent comment; --no-ai excludes bots
+  mark                  MA      Your mark timestamp
+
+  Timestamp columns show YYYY-MM-DD; if two or more timestamp values in the same
+  row share a date, those values show YYYY-MM-DD HH:MM to distinguish them.
+
+  Prefix abbreviations are resolved unambiguously (e.g. 'AU' -> author).
+  Explicit short aliases: NC (num-comments), PR (pull-request).
+
+  Boolean comparisons between timestamp columns:
+    col1 OP col2   where OP is one of:  >  <  >=  <=  ==
+    Returns true / false / n/a (n/a when either side has no value)
+    Example:  last-comment>my-last-comment
+    Header shown as abbreviated column names, e.g. LA>MY
+
+  --sort col,col,...   loc and nc sort descending; all others ascending
+  --filter col=v1,v2  keep only rows where col's value is one of v1, v2, ...
+                       col can be any column including a comparison expression
+                       Multiple --filter flags are ANDed together
+                       Example: --filter la>my=false,n/a --filter nc=0
+
+Config file (${CONFIG_FILE:-$DEFAULT_CONFIG}):
+  owner:         OWNER
+  repo-name:     REPO_NAME
+  ignore-author: user1, user2
+  ignore-pr:     1234, 5678
+  ai-author:     bot1, bot2
+  author-name:   handle1=Full Name, handle2=Full Name
 EOF
-    exit 0
 }
 
 REPO=""
@@ -37,7 +78,7 @@ while getopts ":r:c:t:h" opt; do
         r) REPO="$OPTARG" ;;
         c) CONFIG_FILE="$OPTARG" ;;
         t) MAX_THREADS="$OPTARG" ;;
-        h) usage ;;
+        h) show_help; exit 0 ;;
         :) echo "Error: -$OPTARG requires an argument." >&2; exit 1 ;;
         *) echo "Error: Unknown option -$OPTARG" >&2; exit 1 ;;
     esac
@@ -784,56 +825,7 @@ while true; do
             FOCUSED_PR=""
             ;;
         help|h)
-            cat <<HELP
-Commands:
-  list (L) [cols] [--sort cols] [--filter col=val,...] [--no-ai]
-  comments (C) [PR] [--no-ai] [--no-inline] [--all]
-  mark (M) [PR]         Record current time for PR (comments hides older threads)
-  unmark (N) [PR]       Remove mark for PR
-  <number>              Focus on a specific PR (prompt changes to #PR>)
-  up                    Stop focusing on the current PR
-  help (H)              Show this help message
-  quit / exit           Exit
-
-list columns (default: pr,title,author); commands and abbreviations are case-insensitive:
-  COLUMN                ABBREV  NOTES
-  ------                ------  -----
-  pull-request          PR      PR number (alias: PR)
-  title                 TI
-  author                AU
-  loc                   LO      Scala lines added/removed
-  num-comments          NC      Comments since mark (or total); --no-ai excludes bots
-  creation-date         CR      Date PR was opened
-  last-comment-time     LA      Time of most recent comment; --no-ai excludes bots
-  my-last-comment-time  MY      Time of your most recent comment; --no-ai excludes bots
-  mark                  MA      Your mark timestamp
-
-  Timestamp columns show YYYY-MM-DD; if two or more timestamp values in the same
-  row share a date, those values show YYYY-MM-DD HH:MM to distinguish them.
-
-  Prefix abbreviations are resolved unambiguously (e.g. 'AU' -> author).
-  Explicit short aliases: NC (num-comments), PR (pull-request).
-
-  Boolean comparisons between timestamp columns:
-    col1 OP col2   where OP is one of:  >  <  >=  <=  ==
-    Returns true / false / n/a (n/a when either side has no value)
-    Example:  last-comment>my-last-comment
-    Header shown as abbreviated column names, e.g. LA>MY
-
-  --sort col,col,...   loc and nc sort descending; all others ascending
-  --filter col=v1,v2  keep only rows where col's value is one of v1, v2, ...
-                       col can be any column including a comparison expression
-                       Multiple --filter flags are ANDed together
-                       Example: --filter la>my=false,n/a --filter nc=0
-
-Config file ($CONFIG_FILE):
-  owner:         OWNER
-  repo-name:     REPO_NAME
-  ignore-author: user1, user2
-  ignore-pr:     1234, 5678
-  ai-author:     bot1, bot2
-  author-name:   handle1=Full Name, handle2=Full Name
-HELP
+            show_help
             ;;
         quit|exit|"")
             break
