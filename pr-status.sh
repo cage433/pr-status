@@ -339,15 +339,10 @@ if command == "list":
             _a = _a.strip()
             if _a:
                 ai_authors.add(_a)
-    _now = datetime.datetime.now(datetime.timezone.utc)
-    _week_ago = (_now - datetime.timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
+    def fmt_ts(val, show_time=False, blank_if_empty=False):
+        if not val: return "" if blank_if_empty else "n/a"
+        return (val[:10] + " " + val[11:16]) if show_time else val[:10]
 
-    def fmt_date_only(d):
-        return d[:10] if d else "n/a"
-
-    def fmt_recent(d, blank_if_empty=False):
-        if not d: return "" if blank_if_empty else "n/a"
-        return (d[:10] + " " + d[11:16]) if d > _week_ago else d[:10]
     KNOWN_COLS   = ["pr", "title", "author", "loc", "num-comments",
                     "creation-date", "last-comment-time", "my-last-comment-time", "mark"]
     COL_ALIASES  = {"nc": "num-comments"}
@@ -356,7 +351,7 @@ if command == "list":
                     "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
                     "mark": "MARK"}
     COL_WIDTHS   = {"pr": 6,    "title": 60,       "author": 20,       "loc": 15,
-                    "num-comments": 4, "creation-date": 11,
+                    "num-comments": 4, "creation-date": 17,
                     "last-comment-time": 17, "my-last-comment-time": 17, "mark": 17}
 
     def resolve_col(name):
@@ -516,6 +511,16 @@ if command == "list":
         if col == "mark":                return marks.get(pr["number"], "")
         return ""
 
+    def compute_show_time(pr):
+        """Return set of column names that need HH:MM shown due to same-day collisions."""
+        date_to_cols = {}
+        for spec in cols:
+            if isinstance(spec, tuple) or spec not in TIMESTAMP_COLS: continue
+            val = timestamp_val(spec, pr)
+            if not val: continue
+            date_to_cols.setdefault(val[:10], []).append(spec)
+        return {col for date_cols in date_to_cols.values() if len(date_cols) > 1 for col in date_cols}
+
     if sort_cols:
         def sort_key(pr):
             key = []
@@ -534,7 +539,7 @@ if command == "list":
             return key
         all_prs.sort(key=sort_key)
 
-    def cell(spec, pr):
+    def cell(spec, pr, show_time_cols=frozenset()):
         if isinstance(spec, tuple):
             _, left, op, right = spec
             lv = timestamp_val(left, pr)
@@ -547,10 +552,10 @@ if command == "list":
         if col == "pr":                  return "#%-5s" % pr["number"]
         if col == "title":               return pr["title"][:58]
         if col == "author":              return get_author(pr)
-        if col == "creation-date":       return fmt_date_only(pr.get("createdAt", ""))
-        if col == "last-comment-time":   return fmt_recent(get_last_comment(pr["number"]))
-        if col == "my-last-comment-time":return fmt_recent(get_last_comment(pr["number"], user_only=True), blank_if_empty=True)
-        if col == "mark":                return fmt_recent(marks.get(pr["number"], ""), blank_if_empty=True)
+        if col == "creation-date":       return fmt_ts(pr.get("createdAt", ""), col in show_time_cols)
+        if col == "last-comment-time":   return fmt_ts(get_last_comment(pr["number"]), col in show_time_cols)
+        if col == "my-last-comment-time":return fmt_ts(get_last_comment(pr["number"], user_only=True), col in show_time_cols, blank_if_empty=True)
+        if col == "mark":                return fmt_ts(marks.get(pr["number"], ""), col in show_time_cols, blank_if_empty=True)
         if col == "loc":
             adds, dels = loc_results.get(pr["number"], (0, 0))
             return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
@@ -563,12 +568,13 @@ if command == "list":
         return " ".join(parts)
 
     if filter_col_spec is not None:
-        all_prs = [pr for pr in all_prs if cell(filter_col_spec, pr) in filter_vals]
+        all_prs = [pr for pr in all_prs if cell(filter_col_spec, pr, compute_show_time(pr)) in filter_vals]
 
     print(fmt_row([col_header(c) for c in cols]))
     print(fmt_row(["-" * col_width(c) for c in cols]))
     for pr in all_prs:
-        print(fmt_row([cell(c, pr) for c in cols]))
+        stc = compute_show_time(pr)
+        print(fmt_row([cell(c, pr, stc) for c in cols]))
 
 elif command == "comments":
     import threading
@@ -770,6 +776,9 @@ list columns (default: pr,title,author):
   last-comment-time     la      Time of most recent comment; --no-ai excludes bots
   my-last-comment-time  my      Time of your most recent comment; --no-ai excludes bots
   mark                  ma      Your mark timestamp
+
+  Timestamp columns show YYYY-MM-DD; if two or more timestamp values in the same
+  row share a date, those values show YYYY-MM-DD HH:MM to distinguish them.
 
   Prefix abbreviations are resolved unambiguously (e.g. 'au' -> author).
   Explicit short aliases: nc (num-comments).
