@@ -146,6 +146,7 @@ list_sort_str       = sys.argv[9]  if command == "list" and len(sys.argv) > 9  e
 list_marks_file     = sys.argv[10] if command == "list" and len(sys.argv) > 10 else ""
 list_no_ai          = sys.argv[11] == "1" if command == "list" and len(sys.argv) > 11 else False
 list_ai_authors_str = sys.argv[12] if command == "list" and len(sys.argv) > 12 else ""
+list_filter_str     = sys.argv[13] if command == "list" and len(sys.argv) > 13 else ""
 pr_number = int(sys.argv[8]) if command != "list" and len(sys.argv) > 8 else None
 ai_authors_str = sys.argv[9] if command != "list" and len(sys.argv) > 9 else ""
 no_ai = sys.argv[10] == "1" if command != "list" and len(sys.argv) > 10 else False
@@ -405,9 +406,18 @@ if command == "list":
     cols      = [parse_col_spec(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pr", "title", "author"]
     sort_cols = [resolve_col(c)    for c in list_sort_str.split(",")    if c.strip()] if list_sort_str    else []
 
+    filter_col_spec = None
+    filter_vals = set()
+    if list_filter_str:
+        _fparts = re.split(r'(?<![><=])=(?!=)', list_filter_str, maxsplit=1)
+        if len(_fparts) != 2:
+            print("Invalid --filter (expected col=val,...): %r" % list_filter_str, file=sys.stderr); sys.exit(1)
+        filter_col_spec = parse_col_spec(_fparts[0].strip())
+        filter_vals = {v.strip() for v in _fparts[1].split(",")}
+
     def _referenced_cols():
         names = set()
-        for s in cols:
+        for s in cols + ([filter_col_spec] if filter_col_spec is not None else []):
             if isinstance(s, tuple): names.add(s[1]); names.add(s[3])
             else: names.add(s)
         return names | set(sort_cols)
@@ -552,6 +562,9 @@ if command == "list":
                  for i, (col, val) in enumerate(zip(cols, vals))]
         return " ".join(parts)
 
+    if filter_col_spec is not None:
+        all_prs = [pr for pr in all_prs if cell(filter_col_spec, pr) in filter_vals]
+
     print(fmt_row([col_header(c) for c in cols]))
     print(fmt_row(["-" * col_width(c) for c in cols]))
     for pr in all_prs:
@@ -669,14 +682,23 @@ while true; do
             if [[ "$ARG" =~ --sort[[:space:]]+([^[:space:]]+) ]]; then
                 SORT_COLS="${BASH_REMATCH[1]}"
             fi
+            FILTER_SPEC=""
+            if [[ "$ARG" =~ --filter[[:space:]]+([^[:space:]]+) ]]; then
+                FILTER_SPEC="${BASH_REMATCH[1]}"
+            fi
             COLUMNS_ARG="$ARG"
             [[ "$COLUMNS_ARG" == *" --no-ai"* ]] && COLUMNS_ARG="${COLUMNS_ARG/ --no-ai/}"
             [[ "$COLUMNS_ARG" == "--no-ai"* ]] && COLUMNS_ARG="${COLUMNS_ARG#--no-ai}"
             [[ "$COLUMNS_ARG" == *" --sort"* ]] && COLUMNS_ARG="${COLUMNS_ARG%% --sort*}"
             [[ "$COLUMNS_ARG" == "--sort"* ]] && COLUMNS_ARG=""
+            if [[ -n "$FILTER_SPEC" ]]; then
+                COLUMNS_ARG="${COLUMNS_ARG/ --filter ${FILTER_SPEC}/}"
+                COLUMNS_ARG="${COLUMNS_ARG/--filter ${FILTER_SPEC} /}"
+                COLUMNS_ARG="${COLUMNS_ARG/--filter ${FILTER_SPEC}/}"
+            fi
             COLUMNS_ARG="${COLUMNS_ARG## }"
             COLUMNS_ARG="${COLUMNS_ARG%% }"
-            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS"
+            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$COLUMNS_ARG" "$SORT_COLS" "$MARKS_FILE" "$NO_AI" "$AI_AUTHORS" "$FILTER_SPEC"
             ;;
         comments|c)
             load_config
@@ -727,7 +749,7 @@ while true; do
         help|h)
             cat <<HELP
 Commands:
-  list (l) [cols] [--sort cols] [--no-ai]
+  list (l) [cols] [--sort cols] [--filter col=val,...] [--no-ai]
   comments (c) [PR] [--no-ai] [--no-inline] [--all]
   mark (m) [PR]         Record current time for PR (comments hides older threads)
   unmark (n) [PR]       Remove mark for PR
@@ -759,6 +781,9 @@ list columns (default: pr,title,author):
     Header shown as abbreviated column names, e.g. LA>MY
 
   --sort col,col,...   loc and nc sort descending; all others ascending
+  --filter col=v1,v2  keep only rows where col's value is one of v1, v2, ...
+                       col can be any column including a comparison expression
+                       Example: --filter last-comment>my-last-comment=false,n/a
 
 Config file ($CONFIG_FILE):
   owner:         OWNER
