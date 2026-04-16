@@ -141,9 +141,10 @@ owner = sys.argv[4]
 repo = sys.argv[5]
 max_threads = int(sys.argv[6])
 ignored_prs_str = sys.argv[7]
-show_loc = sys.argv[8] == "1" if command == "list" and len(sys.argv) > 8 else False
+list_columns_str = sys.argv[8] if command == "list" and len(sys.argv) > 8 else ""
+list_sort_str    = sys.argv[9] if command == "list" and len(sys.argv) > 9 else ""
 pr_number = int(sys.argv[8]) if command != "list" and len(sys.argv) > 8 else None
-ai_authors_str = sys.argv[9] if len(sys.argv) > 9 else ""
+ai_authors_str = sys.argv[9] if command != "list" and len(sys.argv) > 9 else ""
 no_ai = sys.argv[10] == "1" if len(sys.argv) > 10 else False
 no_inline = sys.argv[11] == "1" if len(sys.argv) > 11 else False
 mark_timestamp = sys.argv[12] if len(sys.argv) > 12 else ""
@@ -395,10 +396,27 @@ all_prs = [pr for pr in all_prs
            and not pr.get("isDraft", False)]
 
 if command == "list":
-    if show_loc:
-        import threading
-        loc_results = {}
+    import threading
+    KNOWN_COLS = ["pr", "title", "author", "loc"]
+    COL_HEADERS = {"pr": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC"}
+    COL_WIDTHS  = {"pr": 6,    "title": 60,       "author": 20,        "loc": 15}
 
+    def resolve_col(name):
+        name = name.lower().strip()
+        matches = [c for c in KNOWN_COLS if c.startswith(name)]
+        if len(matches) == 1:
+            return matches[0]
+        if name in KNOWN_COLS:
+            return name
+        if not matches:
+            print("Unknown column: %r" % name, file=sys.stderr); sys.exit(1)
+        print("Ambiguous column %r (matches: %s)" % (name, ", ".join(matches)), file=sys.stderr); sys.exit(1)
+
+    cols      = [resolve_col(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pr", "title", "author"]
+    sort_cols = [resolve_col(c) for c in list_sort_str.split(",")    if c.strip()] if list_sort_str    else []
+
+    loc_results = {}
+    if "loc" in cols or "loc" in sort_cols:
         def fetch_scala_loc(pr_num):
             cmd = ["gh", "api", "--paginate",
                    "repos/%s/%s/pulls/%d/files?per_page=100" % (owner, repo, pr_num),
@@ -415,29 +433,39 @@ if command == "list":
 
         threads = [threading.Thread(target=fetch_scala_loc, args=(pr["number"],))
                    for pr in all_prs]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        for t in threads: t.start()
+        for t in threads: t.join()
 
-        all_prs.sort(key=lambda pr: -(sum(loc_results.get(pr["number"], (0, 0)))))
+    if sort_cols:
+        def sort_key(pr):
+            key = []
+            for col in sort_cols:
+                if col == "pr":     key.append(pr["number"])
+                elif col == "title":  key.append(pr["title"].lower())
+                elif col == "author": key.append(get_author(pr).lower())
+                elif col == "loc":
+                    adds, dels = loc_results.get(pr["number"], (0, 0))
+                    key.append(-(adds + dels))
+            return key
+        all_prs.sort(key=sort_key)
 
-    if show_loc:
-        print("%-6s %-60s %-20s %s" % ("PR", "TITLE", "AUTHOR", "LOC"))
-        print("%-6s %-60s %-20s %s" % ("------", "-" * 60, "-" * 20, "-" * 12))
-    else:
-        print("%-6s %-60s %s" % ("PR", "TITLE", "AUTHOR"))
-        print("%-6s %-60s %s" % ("------", "-" * 60, "-" * 20))
+    def cell(col, pr):
+        if col == "pr":     return "#%-5s" % pr["number"]
+        if col == "title":  return pr["title"][:58]
+        if col == "author": return get_author(pr)
+        if col == "loc":
+            adds, dels = loc_results.get(pr["number"], (0, 0))
+            return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
+
+    def fmt_row(vals):
+        parts = ["%-*s" % (COL_WIDTHS[col], val) if i < len(cols) - 1 else val
+                 for i, (col, val) in enumerate(zip(cols, vals))]
+        return " ".join(parts)
+
+    print(fmt_row([COL_HEADERS[c] for c in cols]))
+    print(fmt_row(["-" * COL_WIDTHS[c] for c in cols]))
     for pr in all_prs:
-        num = pr["number"]
-        title = pr["title"][:58]
-        author = get_author(pr)
-        if show_loc:
-            adds, dels = loc_results.get(num, (0, 0))
-            loc = "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
-            print("#%-5s %-60s %-20s %s" % (num, title, author, loc))
-        else:
-            print("#%-5s %-60s %s" % (num, title, author))
+        print(fmt_row([cell(c, pr) for c in cols]))
 
 elif command == "unreviewed":
     print("%-6s %-60s %s" % ("PR", "TITLE", "AUTHOR"))
@@ -583,8 +611,15 @@ while true; do
     case "$CMD" in
         list|l)
             load_config
-            SHOW_LOC=0; [[ "$ARG" == *"--loc"* ]] && SHOW_LOC=1
-            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$SHOW_LOC"
+            SORT_COLS=""
+            if [[ "$ARG" =~ --sort[[:space:]]+([^[:space:]]+) ]]; then
+                SORT_COLS="${BASH_REMATCH[1]}"
+            fi
+            COLUMNS_ARG="$ARG"
+            [[ "$COLUMNS_ARG" == *" --sort"* ]] && COLUMNS_ARG="${COLUMNS_ARG%% --sort*}"
+            [[ "$COLUMNS_ARG" == "--sort"* ]] && COLUMNS_ARG=""
+            COLUMNS_ARG="${COLUMNS_ARG%% }"
+            python3 "$PYTHON_SCRIPT" "list" "$GH_USER" "$IGNORED_AUTHORS" "$OWNER" "$REPO_NAME" "$MAX_THREADS" "$IGNORED_PRS" "$COLUMNS_ARG" "$SORT_COLS"
             ;;
         unreviewed|u)
             load_config
@@ -643,7 +678,9 @@ while true; do
         help|h)
             cat <<HELP
 Commands:
-  list (l)              List all open PRs [--loc to add Scala LOC, sorted by size]
+  list (l) [cols]       List PRs; cols = comma-separated from: pr,title,author,loc
+                        (default: pr,title,author); abbreviations ok
+                        --sort col,col,...  sort by columns (loc sorts descending)
   unreviewed (u)        Show PRs you haven't reviewed
   reviewed (r)          Show PRs you've reviewed with timestamps
   comments (c) [PR]     Show comments for a PR [--no-ai] [--no-inline] [--all]
