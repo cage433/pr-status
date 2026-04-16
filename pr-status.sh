@@ -366,14 +366,14 @@ if command == "list":
         if not val: return "" if blank_if_empty else "n/a"
         return (val[:10] + " " + val[11:16]) if show_time else val[:10]
 
-    KNOWN_COLS   = ["pr", "title", "author", "loc", "num-comments",
+    KNOWN_COLS   = ["pull-request", "title", "author", "loc", "num-comments",
                     "creation-date", "last-comment-time", "my-last-comment-time", "mark"]
-    COL_ALIASES  = {"nc": "num-comments"}
-    COL_HEADERS  = {"pr": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
+    COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request"}
+    COL_HEADERS  = {"pull-request": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
                     "num-comments": "NC", "creation-date": "CREATED",
                     "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
                     "mark": "MARK"}
-    COL_WIDTHS   = {"pr": 6,    "title": 60,       "author": 20,       "loc": 15,
+    COL_WIDTHS   = {"pull-request": 6, "title": 60,       "author": 20,       "loc": 15,
                     "num-comments": 4, "creation-date": 17,
                     "last-comment-time": 17, "my-last-comment-time": 17, "mark": 17}
 
@@ -392,7 +392,7 @@ if command == "list":
 
     TIMESTAMP_COLS = {"creation-date", "last-comment-time", "my-last-comment-time", "mark"}
     COL_ABBREVS = {
-        "pr": "PR", "title": "TTL", "author": "AUTH", "loc": "LOC",
+        "pull-request": "PR", "title": "TTL", "author": "AUTH", "loc": "LOC",
         "num-comments": "NC", "creation-date": "CD",
         "last-comment-time": "LC", "my-last-comment-time": "MLC", "mark": "MARK",
     }
@@ -421,7 +421,7 @@ if command == "list":
             return max(len(col_header(spec)), 5)  # 5 for "false"
         return COL_WIDTHS[spec]
 
-    cols      = [parse_col_spec(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pr", "title", "author"]
+    cols      = [parse_col_spec(c) for c in list_columns_str.split(",") if c.strip()] if list_columns_str else ["pull-request", "title", "author"]
     sort_cols = [resolve_col(c)    for c in list_sort_str.split(",")    if c.strip()] if list_sort_str    else []
 
     filters = []
@@ -548,7 +548,7 @@ if command == "list":
         def sort_key(pr):
             key = []
             for col in sort_cols:
-                if col == "pr":                    key.append(pr["number"])
+                if col == "pull-request":          key.append(pr["number"])
                 elif col == "title":               key.append(pr["title"].lower())
                 elif col == "author":              key.append(get_author(pr).lower())
                 elif col == "creation-date":       key.append(pr.get("createdAt", "Z"))
@@ -572,7 +572,7 @@ if command == "list":
                       lv >= rv if op == ">=" else lv <= rv if op == "<=" else lv == rv)
             return "true" if result else "false"
         col = spec
-        if col == "pr":                  return "#%-5s" % pr["number"]
+        if col == "pull-request":        return "#%-5s" % pr["number"]
         if col == "title":               return pr["title"][:58]
         if col == "author":              return get_author(pr)
         if col == "creation-date":       return fmt_ts(pr.get("createdAt", ""), col in show_time_cols)
@@ -798,7 +798,7 @@ Commands:
 list columns (default: pr,title,author); commands and abbreviations are case-insensitive:
   COLUMN                ABBREV  NOTES
   ------                ------  -----
-  pr                    PR      PR number
+  pull-request          PR      PR number (alias: PR)
   title                 TI
   author                AU
   loc                   LO      Scala lines added/removed
@@ -812,7 +812,7 @@ list columns (default: pr,title,author); commands and abbreviations are case-ins
   row share a date, those values show YYYY-MM-DD HH:MM to distinguish them.
 
   Prefix abbreviations are resolved unambiguously (e.g. 'AU' -> author).
-  Explicit short aliases: NC (num-comments).
+  Explicit short aliases: NC (num-comments), PR (pull-request).
 
   Boolean comparisons between timestamp columns:
     col1 OP col2   where OP is one of:  >  <  >=  <=  ==
