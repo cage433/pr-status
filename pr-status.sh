@@ -28,9 +28,9 @@ Commands:
   quit / exit           Exit
 
 list columns (default: pr,title,author); commands and abbreviations are case-insensitive:
-  COLUMN                ABBREV  NOTES
-  ------                ------  -----
-  pull-request          PR      PR number (alias: PR)
+  COLUMN                ALIAS   NOTES
+  ------                -----   -----
+  pull-request          PR      PR number
   title                 TI
   author                AU
   loc                   LO      Scala lines added/removed
