@@ -1,0 +1,23 @@
+Filter Expressions:
+
+  Value Filters:
+
+      These are of the form COL=v1,v2,..,vn. Only rows where COL's value is one of v1, ..., vn
+      are kept.
+
+  Timestamp Filters:
+
+      Boolean comparisons involving timestamp columns are supported. The following are
+      all valid filters
+
+          LCT > MCT         -- true if a comment was made _after_ the user's last
+          LCT > yesterday   -- true if a comment was made _after_ the start of day, yesterday
+          wed < LCT         -- true if a comment was made _after_ the start of the previous wednesday
+          MCT = LCT         -- true if the last comment was made at exactly the same time as
+                               the user's last comment
+
+      Note that blank timestamps, e.g. LCT when the user has _never_ made a comment, are
+      treated as epoch (1970-01-01)
+
+      Day names resolve to the most recent occurrence strictly before today
+        keep only rows where col's value is one of v1, v2, ...

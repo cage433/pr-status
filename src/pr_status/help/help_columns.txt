@@ -1,0 +1,20 @@
+Report Columns:
+
+  Note: If no columns are provided, the default report uses the columns pr, title, author
+
+  Name                  Alias   Notes
+  ------                -----   -----
+  pull-request          P       PR number
+  title                 T
+  author                A
+  loc                   LOC     Scala lines added/removed
+  num-comments          NC      Comments since mark (or total)
+  creation-date         CD      Date PR was opened
+  last-comment-time     LCT     Time of most recent comment
+  my-last-comment-time  MCT     Time of your most recent comment
+  mark                  MK      Your mark timestamp
+  comment               C       One row per comment; shows comment text
+  comment-time          CT      Timestamp of the comment (use with comment columns)
+  comment-author        CA      Author of the comment (use with comment columns)
+
+  Names and aliases are case-insensitive. Unambiguous prefixes of names also work (e.g. 'cre' for 'creation-date').

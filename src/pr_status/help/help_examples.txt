@@ -1,0 +1,23 @@
+Report Examples:
+
+  1.
+
+  report P,T,A,LOC --filter LCT>MCT --filter A!=alex --sort LOC
+
+    Report pull request id, title, author and LOC changes, for all pull requests where
+    the latest comment time is _after_ the latest comment by the user, excluding PRs
+    authored by alex, sorted by LOC descending
+
+  2.
+
+  report CT,CA,C --filter CT>MCT --filter P=1234
+
+    Report comment time, comment author and comment, for all comments on pull request 1234,
+    where the comment time is after the latest common on this PR by the user.
+
+  3.
+
+  report P,T,A,NC --filter LCT>MCT
+
+    Report pull request id, title, author and number of comments, for all pull requests that
+    have comments created _after_ the user last commented
