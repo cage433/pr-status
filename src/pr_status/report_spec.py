@@ -27,19 +27,20 @@ class _ListError(Exception):
 
 KNOWN_COLS   = ["pull-request", "title", "author", "loc", "num-comments",
                 "creation-date", "last-comment-time", "my-last-comment-time", "mark",
-                "comment", "comment-time", "comment-author"]
+                "comment", "comment-time", "comment-author", "requested"]
 COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request",
                 "cd": "creation-date", "lct": "last-comment-time",
                 "mct": "my-last-comment-time", "mk": "mark", "c": "comment",
-                "ct": "comment-time", "ca": "comment-author"}
+                "ct": "comment-time", "ca": "comment-author", "r": "requested"}
 COL_HEADERS  = {"pull-request": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
                 "num-comments": "NC", "creation-date": "CREATED",
                 "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
-                "mark": "MARK", "comment": "COMMENT", "comment-time": "CT", "comment-author": "CA"}
+                "mark": "MARK", "comment": "COMMENT", "comment-time": "CT", "comment-author": "CA",
+                "requested": "REQUESTED"}
 COL_WIDTHS   = {"pull-request": 6, "title": 60,       "author": 20,       "loc": 15,
                 "num-comments": 4, "creation-date": 17,
                 "last-comment-time": 17, "my-last-comment-time": 17, "mark": 17,
-                "comment": 70, "comment-time": 17, "comment-author": 20}
+                "comment": 70, "comment-time": 17, "comment-author": 20, "requested": 40}
 TIMESTAMP_COLS = {"creation-date", "last-comment-time", "my-last-comment-time", "mark", "comment-time"}
 COL_ABBREVS  = {
     "pull-request": "P", "title": "T", "author": "A", "loc": "LOC",

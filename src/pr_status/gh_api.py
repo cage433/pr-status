@@ -23,6 +23,14 @@ query($owner: String!, $repo: String!, $cursor: String) {
         author {
           login
         }
+        reviewRequests(first: 20) {
+          nodes {
+            requestedReviewer {
+              ... on User { login }
+              ... on Team { name }
+            }
+          }
+        }
       }
     }
   }

@@ -47,9 +47,11 @@ def make_raw(
     )
 
 
-def pr_node(number: int, title: str = "Test PR", author: str = "alice") -> Node:
+def pr_node(number: int, title: str = "Test PR", author: str = "alice", reviewers: list[str] | None = None) -> Node:
+    review_request_nodes = [{"requestedReviewer": {"login": r}} for r in (reviewers or [])]
     return Node({"number": number, "title": title, "isDraft": False,
-                 "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author}})
+                 "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
+                 "reviewRequests": {"nodes": review_request_nodes}})
 
 
 def comment_node(body: str, author: str = "alice", created_at: str = "2024-01-15T10:00:00Z") -> Node:
@@ -245,6 +247,26 @@ class TestGithubDataFromRaw(unittest.TestCase):
         )
         data = GithubData.from_raw(make_config(), marks, make_args(), raw)
         self.assertEqual(len(data.rows_marked[pr]), 2)
+
+
+class TestGithubPRReviewers(unittest.TestCase):
+
+    def test_reviewers_parsed_from_review_requests(self):
+        raw = make_raw(pr_nodes=[pr_node(1, reviewers=["bob", "carol"])])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewers, ["bob", "carol"])
+
+    def test_no_reviewers_when_none_requested(self):
+        raw = make_raw(pr_nodes=[pr_node(1)])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewers, [])
+
+    def test_missing_review_requests_field_handled(self):
+        node = Node({"number": 1, "title": "T", "isDraft": False,
+                     "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"}})
+        raw = make_raw(pr_nodes=[node])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewers, [])
 
 
 if __name__ == "__main__":

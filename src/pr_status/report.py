@@ -115,12 +115,22 @@ def _report_data_lines(
             return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
         if col == "num-comments":
             return str(count_since(pr.number))
+        if col == "requested":
+            return ", ".join(config.author_name(r) for r in pr.reviewers)
         if col in ("comment", "comment-time", "comment-author"): return ""
         return ""
 
     def _filter_val(fc: ColSpec, pr: GithubPR) -> str:
         if isinstance(fc, PlainColumn) and fc.name == "pull-request": return str(pr.number)
         return cell(fc, pr, compute_show_time(pr))
+
+    def _pr_passes_filter(pr: GithubPR, fc: ColSpec, fv: set[str], neg: bool) -> bool:
+        if isinstance(fc, PlainColumn) and fc.name == "requested":
+            reviewer_names = {config.author_name(r) for r in pr.reviewers}
+            matched = (not pr.reviewers and "unassigned" in fv) or bool(reviewer_names & fv)
+            return not matched if neg else matched
+        val = _filter_val(fc, pr)
+        return (val not in fv) if neg else (val in fv)
 
     def _uses_comment_time(fc: ColSpec) -> bool:
         if isinstance(fc, PlainColumn):   return fc.name == "comment-time"
@@ -132,8 +142,7 @@ def _report_data_lines(
 
     if pr_filters:
         all_prs = [pr for pr in all_prs
-                   if all(_filter_val(fc, pr) not in fv if neg else _filter_val(fc, pr) in fv
-                          for fc, fv, neg in pr_filters)]
+                   if all(_pr_passes_filter(pr, fc, fv, neg) for fc, fv, neg in pr_filters)]
 
     _COMMENT_NAMES = frozenset({"comment", "comment-time", "comment-author"})
     _comment_in_cols = any(isinstance(c, PlainColumn) and c.name in _COMMENT_NAMES for c in cols)

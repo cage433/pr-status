@@ -2,8 +2,14 @@ Filter Expressions:
 
   Value Filters:
 
-      These are of the form COL=v1,v2,..,vn. Only rows where COL's value is one of v1, ..., vn
-      are kept.
+      COL=v1,v2,..,vn  keeps only rows where COL's value is one of v1, ..., vn.
+      COL!=v1,v2,..,vn keeps only rows where COL's value is none of v1, ..., vn.
+
+  Requested-reviewer Filters:
+
+      R=v1,v2,..,vn keeps PRs where at least one requested reviewer matches any of the values.
+      R=unassigned keeps PRs with no requested reviewers at all.
+      These can be combined: R=unassigned,bob keeps PRs with no reviewers or where bob is a reviewer.
 
   Timestamp Filters:
 

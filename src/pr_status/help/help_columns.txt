@@ -16,5 +16,6 @@ Report Columns:
   comment               C       One row per comment; shows comment text
   comment-time          CT      Timestamp of the comment (use with comment columns)
   comment-author        CA      Author of the comment (use with comment columns)
+  requested             R       Requested reviewers; R=unassigned matches PRs with no reviewers
 
   Names and aliases are case-insensitive. Unambiguous prefixes of names also work (e.g. 'cre' for 'creation-date').

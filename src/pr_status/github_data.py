@@ -40,18 +40,27 @@ class GithubPR:
     isDraft: bool
     createdAt: str
     author: str  # login name; empty string if the account has been deleted
+    reviewers: list[str]
 
     @staticmethod
     def from_graph_ql(nodes: list[Node]) -> list["GithubPR"]:
         result = []
         for node in nodes:
             author_dict = node.get("author") or {}
+            reviewer_nodes = (node.get("reviewRequests") or {}).get("nodes", [])
+            reviewers = []
+            for rn in reviewer_nodes:
+                rv = rn.get("requestedReviewer") or {}
+                login = rv.get("login") or rv.get("name", "")
+                if login:
+                    reviewers.append(login)
             result.append(GithubPR(
                 number=PRNumber(node["number"]),
                 title=node["title"],
                 isDraft=node.get("isDraft", False),
                 createdAt=node.get("createdAt", ""),
                 author=author_dict.get("login", ""),
+                reviewers=reviewers,
             ))
         return result
 

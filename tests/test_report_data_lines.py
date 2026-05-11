@@ -44,10 +44,11 @@ def make_pr(
     title: str = "Test PR",
     author: str = "alice",
     created_at: str = "2024-01-01T00:00:00Z",
+    reviewers: list[str] | None = None,
 ) -> GithubPR:
     return GithubPR(
         number=PRNumber(number), title=title, isDraft=False,
-        createdAt=created_at, author=author,
+        createdAt=created_at, author=author, reviewers=reviewers or [],
     )
 
 
@@ -202,6 +203,24 @@ class TestBasicColumns(unittest.TestCase):
         rows = run("mk", data=data)
         self.assertEqual(rows[0][0], "")
 
+    def test_requested_column_with_reviewers(self):
+        pr = make_pr(1, reviewers=["bob", "carol"])
+        data = make_data(prs=[pr])
+        rows = run("requested", data=data)
+        self.assertEqual(rows[0][0], "bob, carol")
+
+    def test_requested_column_empty_when_no_reviewers(self):
+        data = make_data(prs=[make_pr(1)])
+        rows = run("requested", data=data)
+        self.assertEqual(rows[0][0], "")
+
+    def test_requested_column_applies_author_name_mapping(self):
+        config = make_config(author_names={"bob": "Bob Smith"})
+        pr = make_pr(1, reviewers=["bob"])
+        data = make_data(prs=[pr])
+        rows = run("requested", config=config, data=data)
+        self.assertEqual(rows[0][0], "Bob Smith")
+
 
 class TestComparisonColumn(unittest.TestCase):
 
@@ -279,6 +298,49 @@ class TestFiltering(unittest.TestCase):
         rows = run("author", filters=["author!=alice,bob"], data=data)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][0], "carol")
+
+    def test_filter_requested_matches_when_user_is_one_of_several(self):
+        pr = make_pr(1, reviewers=["bob", "carol"])
+        data = make_data(prs=[pr])
+        rows = run("pr", filters=["requested=bob"], data=data)
+        self.assertEqual(len(rows), 1)
+
+    def test_filter_requested_no_match_when_user_absent(self):
+        pr = make_pr(1, reviewers=["bob", "carol"])
+        data = make_data(prs=[pr])
+        rows = run("pr", filters=["requested=alice"], data=data)
+        self.assertEqual(rows, [])
+
+    def test_filter_requested_not_equal_excludes_when_user_present(self):
+        pr1 = make_pr(1, reviewers=["bob"])
+        pr2 = make_pr(2, reviewers=["carol"])
+        data = make_data(prs=[pr1, pr2])
+        rows = run("pr", filters=["requested!=bob"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("2", rows[0][0])
+
+    def test_filter_requested_respects_author_name_mapping(self):
+        config = make_config(author_names={"boblogin": "Bob"})
+        pr = make_pr(1, reviewers=["boblogin", "carol"])
+        data = make_data(prs=[pr])
+        rows = run("pr", filters=["requested=Bob"], config=config, data=data)
+        self.assertEqual(len(rows), 1)
+
+    def test_filter_requested_unassigned_matches_pr_with_no_reviewers(self):
+        pr1 = make_pr(1, reviewers=[])
+        pr2 = make_pr(2, reviewers=["bob"])
+        data = make_data(prs=[pr1, pr2])
+        rows = run("pr", filters=["requested=unassigned"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("1", rows[0][0])
+
+    def test_filter_requested_not_unassigned_excludes_pr_with_no_reviewers(self):
+        pr1 = make_pr(1, reviewers=[])
+        pr2 = make_pr(2, reviewers=["bob"])
+        data = make_data(prs=[pr1, pr2])
+        rows = run("pr", filters=["requested!=unassigned"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("2", rows[0][0])
 
     def test_comment_time_filter_applied_per_comment(self):
         config = make_config(repo=GithubInfo(owner="o", repo_name="r", gh_user="myuser"))
