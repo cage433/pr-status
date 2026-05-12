@@ -25,7 +25,7 @@ def make_config(**kwargs) -> Config:
 
 
 def make_args(columns: str = "", sort: str = "", filters: list[str] | None = None, include_pre_mark_commits: bool = False) -> ReportArgs:
-    return ReportArgs(include_ai=False, include_pre_mark_commits=include_pre_mark_commits, sort=sort, filters=filters or [], columns=columns)
+    return ReportArgs(include_ai=False, include_pre_mark_commits=include_pre_mark_commits, include_drafts=False, sort=sort, filters=filters or [], columns=columns)
 
 
 def make_marks(data: dict[PRNumber, str] | None = None) -> Marks:
@@ -44,11 +44,12 @@ def make_pr(
     title: str = "Test PR",
     author: str = "alice",
     created_at: str = "2024-01-01T00:00:00Z",
+    is_draft: bool = False,
     reviewers: list[str] | None = None,
     reviewer_states: dict[str, str] | None = None,
 ) -> GithubPR:
     return GithubPR(
-        number=PRNumber(number), title=title, isDraft=False,
+        number=PRNumber(number), title=title, isDraft=is_draft,
         createdAt=created_at, author=author, reviewers=reviewers or [],
         reviewer_states=reviewer_states or {},
     )
@@ -251,6 +252,13 @@ class TestBasicColumns(unittest.TestCase):
         data = make_data(prs=[make_pr(1)])
         rows = run("uc", data=data)
         self.assertEqual(rows[0][0], "")
+
+    def test_age_column(self):
+        import datetime
+        created = (datetime.date.today() - datetime.timedelta(days=10)).isoformat() + "T00:00:00Z"
+        data = make_data(prs=[make_pr(1, created_at=created)])
+        rows = run("ag", data=data)
+        self.assertEqual(rows[0][0], "10")
 
     def test_last_activity_shows_days_since_timestamp(self):
         import datetime
@@ -504,6 +512,18 @@ class TestSorting(unittest.TestCase):
         rows = run("pr,la", sort="la", data=data)
         self.assertIn("1", rows[0][0])  # blank sorts first
         self.assertIn("2", rows[1][0])
+
+    def test_sort_by_draft_non_drafts_first(self):
+        data = make_data(prs=[make_pr(1, is_draft=True), make_pr(2, is_draft=False)])
+        rows = run("pr,d", sort="d", data=data)
+        self.assertIn("2", rows[0][0])  # non-draft sorts first
+        self.assertIn("1", rows[1][0])
+
+    def test_sort_by_draft_reversed_drafts_first(self):
+        data = make_data(prs=[make_pr(1, is_draft=False), make_pr(2, is_draft=True)])
+        rows = run("pr,d", sort="d:R", data=data)
+        self.assertIn("2", rows[0][0])  # draft sorts first when reversed
+        self.assertIn("1", rows[1][0])
 
 
 class TestCommentColumn(unittest.TestCase):

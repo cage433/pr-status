@@ -24,8 +24,8 @@ def make_config(**kwargs) -> Config:
     return Config(**defaults)
 
 
-def make_args(include_ai: bool = True) -> ReportArgs:
-    return ReportArgs(include_ai=include_ai, include_pre_mark_commits=False, sort="", filters=[], columns="")
+def make_args(include_ai: bool = True, include_drafts: bool = False) -> ReportArgs:
+    return ReportArgs(include_ai=include_ai, include_pre_mark_commits=False, include_drafts=include_drafts, sort="", filters=[], columns="")
 
 
 def make_marks(data: dict[PRNumber, str] | None = None) -> Marks:
@@ -51,6 +51,7 @@ def pr_node(
     number: int,
     title: str = "Test PR",
     author: str = "alice",
+    is_draft: bool = False,
     reviewers: list[str] | None = None,
     submitted_reviewers: list[str] | None = None,
     submitted_reviewer_states: dict[str, str] | None = None,
@@ -59,7 +60,7 @@ def pr_node(
     states = submitted_reviewer_states or {}
     review_nodes = [{"author": {"login": r}, "state": states.get(r, "COMMENTED")}
                     for r in (submitted_reviewers or [])]
-    return Node({"number": number, "title": title, "isDraft": False,
+    return Node({"number": number, "title": title, "isDraft": is_draft,
                  "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
                  "reviewRequests": {"nodes": review_request_nodes},
                  "reviews": {"nodes": review_nodes}})
@@ -332,6 +333,25 @@ class TestGithubPRReviewers(unittest.TestCase):
         raw = make_raw(pr_nodes=[node])
         data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
         self.assertEqual(data.all_prs[0].reviewer_states.get("bob"), "APPROVED")
+
+
+class TestDraftFiltering(unittest.TestCase):
+
+    def test_draft_excluded_by_default(self):
+        raw = make_raw(pr_nodes=[pr_node(1), pr_node(2, is_draft=True)])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=False), raw)
+        self.assertEqual([pr.number for pr in data.all_prs], [1])
+
+    def test_draft_included_with_flag(self):
+        raw = make_raw(pr_nodes=[pr_node(1), pr_node(2, is_draft=True)])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw)
+        self.assertEqual([pr.number for pr in data.all_prs], [1, 2])
+
+    def test_is_draft_field_set_correctly(self):
+        raw = make_raw(pr_nodes=[pr_node(1), pr_node(2, is_draft=True)])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw)
+        self.assertFalse(data.all_prs[0].isDraft)
+        self.assertTrue(data.all_prs[1].isDraft)
 
 
 class TestUnresolvedThreadCounts(unittest.TestCase):

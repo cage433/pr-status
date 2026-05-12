@@ -19,6 +19,13 @@ def _ljust_ansi(s: str, width: int) -> str:
     visible = len(_ANSI_RE.sub('', s))
     return s + ' ' * max(0, width - visible)
 
+def _rjust_ansi(s: str, width: int) -> str:
+    visible = len(_ANSI_RE.sub('', s))
+    return ' ' * max(0, width - visible) + s
+
+def _visible_len(s: str) -> int:
+    return len(_ANSI_RE.sub('', s))
+
 from .config import Config
 from .date_utils import fmt_ts, days_since
 from .github_data import GithubComment, GithubData, GithubPR
@@ -28,7 +35,7 @@ from .pr_number import PRNumber
 from .report_args import ReportArgs
 from .report_spec import (
     ColSpec, PlainColumn, Comparison, _ListError,
-    TIMESTAMP_COLS, col_header, col_width,
+    TIMESTAMP_COLS, col_header, col_header_lines, col_is_numeric, col_width,
     ReportSpec,
 )
 
@@ -118,6 +125,8 @@ def _report_data_lines(
                     key.append(k(adds + dels))
                 elif col == "num-comments":
                     key.append(k(count_since(pr.number)))
+                elif col == "age":
+                    key.append(k(days_since(pr.createdAt) or 0))
                 elif col == "last-activity":
                     d = days_since(last_activity.get(pr.number, ""))
                     key.append(k(-1 if d is None else d))
@@ -127,6 +136,8 @@ def _report_data_lines(
                     key.append(k(val))
                 elif col == "reviewers":
                     key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
+                elif col == "draft":
+                    key.append(k(pr.isDraft))
             return key
         all_prs.sort(key=sort_key)
 
@@ -155,7 +166,7 @@ def _report_data_lines(
         if col == "num-comments":
             return str(count_since(pr.number))
         if col == "reviewers":
-            GREEN, RED, RESET = "\033[32m", "\033[31m", "\033[0m"
+            GREEN, RED, ORANGE, RESET = "\033[32m", "\033[31m", "\033[38;5;208m", "\033[0m"
             use_color = sys.stdout.isatty()
             parts = []
             for r in pr.reviewers:
@@ -165,9 +176,14 @@ def _report_data_lines(
                     parts.append(GREEN + name + RESET)
                 elif use_color and state == "CHANGES_REQUESTED":
                     parts.append(RED + name + RESET)
+                elif use_color and state == "COMMENTED":
+                    parts.append(ORANGE + name + RESET)
                 else:
                     parts.append(name)
             return ", ".join(parts)
+        if col == "age":
+            d = days_since(pr.createdAt)
+            return "" if d is None else str(d)
         if col == "last-activity":
             d = days_since(last_activity.get(pr.number, ""))
             return "" if d is None else str(d)
@@ -175,6 +191,8 @@ def _report_data_lines(
             uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
             val = uc if col == "unresolved (all)" else uh if col == "unresolved (human)" else ua
             return str(val) if val else ""
+        if col == "draft":
+            return "true" if pr.isDraft else "false"
         if col in ("comment", "comment-time", "comment-author"): return ""
         return ""
 
@@ -255,13 +273,35 @@ def _render_report(
     data: GithubData,
 ) -> None:
     cols = spec.cols
+    rows = _report_data_lines(config, marks, args, spec, data)
+
+    hdr_lines = [col_header_lines(c) for c in cols]
+    widths = [max(col_width(c), max(_visible_len(l) for l in hdr_lines[i])) for i, c in enumerate(cols)]
+    for row in rows:
+        for i, val in enumerate(row):
+            widths[i] = max(widths[i], _visible_len(val))
 
     def fmt_row(vals: list[str]) -> str:
-        parts = [_ljust_ansi(val, col_width(c)) if i < len(cols) - 1 else val
-                 for i, (c, val) in enumerate(zip(cols, vals))]
+        parts = []
+        for i, (c, val) in enumerate(zip(cols, vals)):
+            if col_is_numeric(c):
+                parts.append(_rjust_ansi(val, widths[i]))
+            elif i == len(cols) - 1:
+                parts.append(val)
+            else:
+                parts.append(_ljust_ansi(val, widths[i]))
         return " ".join(parts)
 
-    print(fmt_row([col_header(c) for c in cols]))
-    print(fmt_row(["-" * col_width(c) for c in cols]))
-    for row in _report_data_lines(config, marks, args, spec, data):
+    max_hdr = max(len(lines) for lines in hdr_lines)
+    for line_idx in range(max_hdr):
+        parts = []
+        for col_idx, lines in enumerate(hdr_lines):
+            text = lines[line_idx] if line_idx < len(lines) else ""
+            w = widths[col_idx]
+            cell = text.center(w) if col_idx < len(cols) - 1 else text.center(w).rstrip()
+            parts.append(cell)
+        print(" ".join(parts))
+
+    print(fmt_row(["-" * widths[i] for i in range(len(cols))]))
+    for row in rows:
         print(fmt_row(row))

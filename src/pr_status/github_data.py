@@ -132,6 +132,8 @@ class GithubData:
         raw: GithubRawData,
     ) -> "GithubData":
         all_prs = GithubPR.from_graph_ql(raw.pr_nodes, config, args)
+        if not args.include_drafts:
+            all_prs = [pr for pr in all_prs if not pr.isDraft]
         all_prs.sort(key=lambda pr: pr.number)
         rows_marked, rows_all = [
             {

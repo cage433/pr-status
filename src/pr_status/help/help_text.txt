@@ -1,43 +1,46 @@
 Usage: {script} [-c CONFIG] [-m MARKS]
 
 Options:
-  -c CONFIG     Path to config file (default: ~/.conf/pr-status/config)
+  -c CONFIG     Path to config file (default: {config})
   -m MARKS      Path to marks file  (default: ~/.cache/pr-status/marks)
   -h            Show this help message
 
 Commands:
-  r, report [cols] [options] [--sort cols] [--filter filter-expression]
-                       output a report
-  m, mark PR           Record current time for PR
-                        - Make a note of the current time against the specified PR in MARKS.
-                          Comments earlier than the marked time will be ignored by the report
-  unmark PR            Remove mark for PR
-                        - equivalently, simply delete the corresponding row in MARKS
-  f, focus PR          Focus on a specific PR
-                        - all reports will be filtered to show only that PR
-                        - the prompt changes to #PR>
-  u, unfocus           Remove focus
-  rl, reload           Reload the config file
-  h, help [topic]      Show this help message, or a specific topic
-  quit / exit          Exit
-  <alias>              Run the report corresponding to this alias, defined in the config file
+  r, report [cols] [options]   Output a report
+  m, mark PR                   Record current time for PR
+                                - Comments earlier than the mark will be ignored
+  unmark PR                    Remove mark for PR
+  f, focus PR                  Focus on a specific PR
+                                - All reports are filtered to show only that PR
+                                - Prompt changes to #PR>
+  u, unfocus                   Remove focus
+  rl, reload                   Reload the config file
+  h, help [topic]              Show help, or a specific topic
+  quit / exit                  Exit
+  <alias>                      Run the alias defined in the config file
 
-Command Options:
+Report Options:
 
-  --include-ai         Include ai comments (ignored by default)
+  --include-ai         Include AI comments and reviewers (excluded by default)
+  --include-drafts     Include draft PRs (excluded by default)
+  --include-pre-mark-commits
+                       Include comments before the mark timestamp
 
 Sorting:
 
-  --sort col,col,...   
-                        - LOC and NC sort descending; all others ascending
-                        - 'help columns' lists the available columns
-                       
+  --sort col,col,...
+                        - Sorts ascending by default: alphabetical for text,
+                          smallest-first for numbers, oldest-first for dates
+                        - Append :R to reverse a column's sort order
+                          e.g. --sort NC:R,author sorts by NC descending,
+                          then author ascending
+                        - 'help columns' lists available column names
 
 Filtering:
 
-  --filter filter-expression 
-                        - keep only rows where the filter-exprssion is true.
-                        - multiple --filter flags are ANDed together
+  --filter filter-expression
+                        - Keep only rows where the filter-expression is true
+                        - Multiple --filter flags are ANDed together
                         - 'help filtering' gives more details
 
 Help topics:

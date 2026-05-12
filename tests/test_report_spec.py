@@ -8,7 +8,7 @@ from pr_status.report_spec import (
 
 
 def make_args(columns: str = "", sort: str = "", filters: list[str] | None = None) -> ReportArgs:
-    return ReportArgs(include_ai=False, include_pre_mark_commits=False, sort=sort, filters=filters or [], columns=columns)
+    return ReportArgs(include_ai=False, include_pre_mark_commits=False, include_drafts=False, sort=sort, filters=filters or [], columns=columns)
 
 
 def resolve(columns: str = "", sort: str = "", filters: list[str] | None = None) -> ReportSpec:
@@ -40,6 +40,14 @@ class TestResolveColumns(unittest.TestCase):
     def test_column_name_case_insensitive(self):
         spec = resolve("TITLE,Author")
         self.assertEqual(spec.cols, [PlainColumn("title"), PlainColumn("author")])
+
+    def test_trailing_underscore_sets_long_name(self):
+        spec = resolve("nc_")
+        self.assertEqual(spec.cols, [PlainColumn("num-comments", long_name=True)])
+
+    def test_trailing_underscore_works_with_alias(self):
+        spec = resolve("cd_,author")
+        self.assertEqual(spec.cols, [PlainColumn("creation-date", long_name=True), PlainColumn("author")])
 
     def test_unknown_column_raises(self):
         with self.assertRaises(_ListError):
@@ -201,6 +209,11 @@ class TestColHeader(unittest.TestCase):
         for col, expected in cases.items():
             self.assertEqual(col_header(PlainColumn(col)), expected)
 
+    def test_long_name_header_is_column_name_uppercased(self):
+        self.assertEqual(col_header(PlainColumn("num-comments", long_name=True)), "NUM-COMMENTS")
+        self.assertEqual(col_header(PlainColumn("creation-date", long_name=True)), "CREATION-DATE")
+        self.assertEqual(col_header(PlainColumn("unresolved (all)", long_name=True)), "UNRESOLVED (ALL)")
+
     def test_comparison_header_uses_abbrevs(self):
         c = Comparison("last-comment-time", ">", "creation-date")
         self.assertEqual(col_header(c), "LCT>CD")
@@ -219,8 +232,16 @@ class TestColWidth(unittest.TestCase):
 
     def test_plain_column_widths(self):
         self.assertEqual(col_width(PlainColumn("title")), 60)
-        self.assertEqual(col_width(PlainColumn("author")), 20)
+        self.assertEqual(col_width(PlainColumn("author")), 15)
         self.assertEqual(col_width(PlainColumn("num-comments")), 4)
+
+    def test_long_name_width_at_least_header_length(self):
+        col = PlainColumn("num-comments", long_name=True)
+        self.assertGreaterEqual(col_width(col), len("NUM-COMMENTS"))
+
+    def test_long_name_width_not_less_than_data_width(self):
+        col = PlainColumn("creation-date", long_name=True)
+        self.assertGreaterEqual(col_width(col), col_width(PlainColumn("creation-date")))
 
     def test_comparison_width_at_least_5(self):
         # "false" is 5 chars — width must accommodate it

@@ -62,8 +62,7 @@ class GithubRawData:
         pr_nodes = gh_api.fetch_pr_nodes(config.repo)
         pr_nodes = [n for n in pr_nodes
                     if node_login(n) not in config.ignored_authors
-                    and n["number"] not in config.ignored_prs
-                    and not n.get("isDraft", False)]
+                    and n["number"] not in config.ignored_prs]
         pr_nums = [PRNumber(n["number"]) for n in pr_nodes]
 
         loc_results: dict[PRNumber, LOC] = {}
