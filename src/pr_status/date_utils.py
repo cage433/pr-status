@@ -27,6 +27,13 @@ def fmt_ts(
     return (val[:10] + " " + val[11:16]) if show_time else val[:10]
 
 
+def days_since(ts: str) -> int | None:
+    if not ts:
+        return None
+    today = datetime.date.today()
+    return max(0, (today - datetime.date.fromisoformat(ts[:10])).days)
+
+
 def parse_date_literal(s: str) -> str | None:
     sl = s.strip().lower()
     today = datetime.date.today()

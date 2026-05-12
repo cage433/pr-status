@@ -28,6 +28,35 @@ class GithubRawData:
         threads = self.comment_data.get(pr_num, {}).get("reviewThreads", {}).get("nodes", [])
         return [t.get("comments", {}).get("nodes", []) for t in threads]
 
+    def last_activity_timestamp(self, pr_num: PRNumber) -> str:
+        timestamps: list[str] = []
+        for c in self.comment_nodes(pr_num):
+            if ts := c.get("createdAt", ""):
+                timestamps.append(ts)
+        for r in self.review_nodes(pr_num):
+            if ts := r.get("submittedAt", ""):
+                timestamps.append(ts)
+        for thread_comments in self.review_thread_nodes(pr_num):
+            for c in thread_comments:
+                if ts := c.get("createdAt", ""):
+                    timestamps.append(ts)
+        return max(timestamps, default="")
+
+    def unresolved_thread_counts(self, pr_num: PRNumber, config: Config) -> tuple[int, int, int]:
+        threads = (self.comment_data.get(pr_num) or {}).get("reviewThreads", {}).get("nodes", [])
+        total = human = ai = 0
+        for thread in threads:
+            if thread.get("isResolved"):
+                continue
+            comments = (thread.get("comments") or {}).get("nodes", [])
+            author = (comments[0].get("author") or {}).get("login", "") if comments else ""
+            total += 1
+            if config.is_ai_author(author):
+                ai += 1
+            else:
+                human += 1
+        return (total, human, ai)
+
     @staticmethod
     def fetch(config: Config, all_cols: set[str]) -> "GithubRawData":
         pr_nodes = gh_api.fetch_pr_nodes(config.repo)
@@ -45,7 +74,8 @@ class GithubRawData:
             for t in threads: t.start()
             for t in threads: t.join()
 
-        COMMENT_COLS = {"num-comments", "last-comment-time", "my-last-comment-time", "comment"}
+        COMMENT_COLS = {"num-comments", "last-comment-time", "my-last-comment-time", "comment",
+                        "unresolved (all)", "unresolved (human)", "unresolved (ai)", "last-activity"}
         comment_data: dict[PRNumber, Node] = {}
         if COMMENT_COLS & all_cols:
             def fetch_comment_data(pr_num: PRNumber) -> None:

@@ -45,10 +45,12 @@ def make_pr(
     author: str = "alice",
     created_at: str = "2024-01-01T00:00:00Z",
     reviewers: list[str] | None = None,
+    reviewer_states: dict[str, str] | None = None,
 ) -> GithubPR:
     return GithubPR(
         number=PRNumber(number), title=title, isDraft=False,
         createdAt=created_at, author=author, reviewers=reviewers or [],
+        reviewer_states=reviewer_states or {},
     )
 
 
@@ -66,6 +68,8 @@ def make_data(
     loc_results: dict[PRNumber, LOC] | None = None,
     rows_marked: dict[PRNumber, list[GithubComment]] | None = None,
     rows_all: dict[PRNumber, list[GithubComment]] | None = None,
+    unresolved_counts: dict[PRNumber, tuple[int, int, int]] | None = None,
+    last_activity: dict[PRNumber, str] | None = None,
 ) -> GithubData:
     prs = prs or []
     pr_nums = [pr.number for pr in prs]
@@ -74,6 +78,8 @@ def make_data(
         loc_results=loc_results or {},
         rows_marked=rows_marked if rows_marked is not None else {n: [] for n in pr_nums},
         rows_all=rows_all if rows_all is not None else {n: [] for n in pr_nums},
+        unresolved_counts=unresolved_counts or {},
+        last_activity=last_activity or {},
     )
 
 
@@ -203,23 +209,67 @@ class TestBasicColumns(unittest.TestCase):
         rows = run("mk", data=data)
         self.assertEqual(rows[0][0], "")
 
-    def test_requested_column_with_reviewers(self):
+    def test_reviewers_column_with_reviewers(self):
         pr = make_pr(1, reviewers=["bob", "carol"])
         data = make_data(prs=[pr])
-        rows = run("requested", data=data)
+        rows = run("reviewers", data=data)
         self.assertEqual(rows[0][0], "bob, carol")
 
-    def test_requested_column_empty_when_no_reviewers(self):
+    def test_reviewers_column_empty_when_no_reviewers(self):
         data = make_data(prs=[make_pr(1)])
-        rows = run("requested", data=data)
+        rows = run("reviewers", data=data)
         self.assertEqual(rows[0][0], "")
 
-    def test_requested_column_applies_author_name_mapping(self):
+    def test_reviewers_column_applies_author_name_mapping(self):
         config = make_config(author_names={"bob": "Bob Smith"})
         pr = make_pr(1, reviewers=["bob"])
         data = make_data(prs=[pr])
-        rows = run("requested", config=config, data=data)
+        rows = run("reviewers", config=config, data=data)
         self.assertEqual(rows[0][0], "Bob Smith")
+
+    def test_unresolved_all_column(self):
+        data = make_data(prs=[make_pr(1)], unresolved_counts={PRNumber(1): (3, 2, 1)})
+        rows = run("uc", data=data)
+        self.assertEqual(rows[0][0], "3")
+
+    def test_unresolved_human_column(self):
+        data = make_data(prs=[make_pr(1)], unresolved_counts={PRNumber(1): (3, 2, 1)})
+        rows = run("uh", data=data)
+        self.assertEqual(rows[0][0], "2")
+
+    def test_unresolved_ai_column(self):
+        data = make_data(prs=[make_pr(1)], unresolved_counts={PRNumber(1): (3, 2, 1)})
+        rows = run("ua", data=data)
+        self.assertEqual(rows[0][0], "1")
+
+    def test_unresolved_column_blank_when_zero(self):
+        data = make_data(prs=[make_pr(1)], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = run("uc", data=data)
+        self.assertEqual(rows[0][0], "")
+
+    def test_unresolved_column_blank_when_no_data(self):
+        data = make_data(prs=[make_pr(1)])
+        rows = run("uc", data=data)
+        self.assertEqual(rows[0][0], "")
+
+    def test_last_activity_shows_days_since_timestamp(self):
+        import datetime
+        ts = (datetime.date.today() - datetime.timedelta(days=5)).isoformat() + "T12:00:00Z"
+        data = make_data(prs=[make_pr(1)], last_activity={PRNumber(1): ts})
+        rows = run("la", data=data)
+        self.assertEqual(rows[0][0], "5")
+
+    def test_last_activity_blank_when_no_activity(self):
+        data = make_data(prs=[make_pr(1)])
+        rows = run("la", data=data)
+        self.assertEqual(rows[0][0], "")
+
+    def test_last_activity_zero_when_today(self):
+        import datetime
+        ts = datetime.date.today().isoformat() + "T08:00:00Z"
+        data = make_data(prs=[make_pr(1)], last_activity={PRNumber(1): ts})
+        rows = run("la", data=data)
+        self.assertEqual(rows[0][0], "0")
 
 
 class TestComparisonColumn(unittest.TestCase):
@@ -299,46 +349,46 @@ class TestFiltering(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][0], "carol")
 
-    def test_filter_requested_matches_when_user_is_one_of_several(self):
+    def test_filter_reviewers_matches_when_user_is_one_of_several(self):
         pr = make_pr(1, reviewers=["bob", "carol"])
         data = make_data(prs=[pr])
-        rows = run("pr", filters=["requested=bob"], data=data)
+        rows = run("pr", filters=["reviewers=bob"], data=data)
         self.assertEqual(len(rows), 1)
 
-    def test_filter_requested_no_match_when_user_absent(self):
+    def test_filter_reviewers_no_match_when_user_absent(self):
         pr = make_pr(1, reviewers=["bob", "carol"])
         data = make_data(prs=[pr])
-        rows = run("pr", filters=["requested=alice"], data=data)
+        rows = run("pr", filters=["reviewers=alice"], data=data)
         self.assertEqual(rows, [])
 
-    def test_filter_requested_not_equal_excludes_when_user_present(self):
+    def test_filter_reviewers_not_equal_excludes_when_user_present(self):
         pr1 = make_pr(1, reviewers=["bob"])
         pr2 = make_pr(2, reviewers=["carol"])
         data = make_data(prs=[pr1, pr2])
-        rows = run("pr", filters=["requested!=bob"], data=data)
+        rows = run("pr", filters=["reviewers!=bob"], data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
 
-    def test_filter_requested_respects_author_name_mapping(self):
+    def test_filter_reviewers_respects_author_name_mapping(self):
         config = make_config(author_names={"boblogin": "Bob"})
         pr = make_pr(1, reviewers=["boblogin", "carol"])
         data = make_data(prs=[pr])
-        rows = run("pr", filters=["requested=Bob"], config=config, data=data)
+        rows = run("pr", filters=["reviewers=Bob"], config=config, data=data)
         self.assertEqual(len(rows), 1)
 
-    def test_filter_requested_unassigned_matches_pr_with_no_reviewers(self):
+    def test_filter_reviewers_none_matches_pr_with_no_reviewers(self):
         pr1 = make_pr(1, reviewers=[])
         pr2 = make_pr(2, reviewers=["bob"])
         data = make_data(prs=[pr1, pr2])
-        rows = run("pr", filters=["requested=unassigned"], data=data)
+        rows = run("pr", filters=["reviewers=none"], data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("1", rows[0][0])
 
-    def test_filter_requested_not_unassigned_excludes_pr_with_no_reviewers(self):
+    def test_filter_reviewers_not_none_excludes_pr_with_no_reviewers(self):
         pr1 = make_pr(1, reviewers=[])
         pr2 = make_pr(2, reviewers=["bob"])
         data = make_data(prs=[pr1, pr2])
-        rows = run("pr", filters=["requested!=unassigned"], data=data)
+        rows = run("pr", filters=["reviewers!=none"], data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
 
@@ -376,7 +426,7 @@ class TestSorting(unittest.TestCase):
         self.assertIn("2", rows[0][0])  # PR 2 has earlier date
         self.assertIn("1", rows[1][0])
 
-    def test_sort_by_num_comments_descending(self):
+    def test_sort_by_num_comments_ascending(self):
         pr1 = make_pr(1)
         pr2 = make_pr(2)
         rows_marked = {
@@ -385,10 +435,22 @@ class TestSorting(unittest.TestCase):
         }
         data = make_data(prs=[pr1, pr2], rows_marked=rows_marked, rows_all={PRNumber(1): [], PRNumber(2): []})
         rows = run("pr,nc", sort="nc", data=data)
+        self.assertEqual(rows[0][1], "1")
+        self.assertEqual(rows[1][1], "3")
+
+    def test_sort_by_num_comments_descending_with_r(self):
+        pr1 = make_pr(1)
+        pr2 = make_pr(2)
+        rows_marked = {
+            PRNumber(1): [make_comment("c1")],
+            PRNumber(2): [make_comment("c1"), make_comment("c2"), make_comment("c3")],
+        }
+        data = make_data(prs=[pr1, pr2], rows_marked=rows_marked, rows_all={PRNumber(1): [], PRNumber(2): []})
+        rows = run("pr,nc", sort="nc:R", data=data)
         self.assertEqual(rows[0][1], "3")
         self.assertEqual(rows[1][1], "1")
 
-    def test_sort_by_loc_descending(self):
+    def test_sort_by_loc_ascending(self):
         pr1 = make_pr(1)
         pr2 = make_pr(2)
         data = make_data(
@@ -396,8 +458,52 @@ class TestSorting(unittest.TestCase):
             loc_results={PRNumber(1): LOC((10, 5)), PRNumber(2): LOC((1000, 500))},
         )
         rows = run("pr,loc", sort="loc", data=data)
+        self.assertIn("1", rows[0][0])
+        self.assertIn("2", rows[1][0])
+
+    def test_sort_by_loc_descending_with_r(self):
+        pr1 = make_pr(1)
+        pr2 = make_pr(2)
+        data = make_data(
+            prs=[pr1, pr2],
+            loc_results={PRNumber(1): LOC((10, 5)), PRNumber(2): LOC((1000, 500))},
+        )
+        rows = run("pr,loc", sort="loc:R", data=data)
         self.assertIn("2", rows[0][0])
         self.assertIn("1", rows[1][0])
+
+    def test_sort_reversal_case_insensitive(self):
+        data = make_data(prs=[make_pr(1, author="zara"), make_pr(2, author="alice")])
+        rows = run("pr,author", sort="author:r", data=data)
+        self.assertEqual(rows[0][1], "zara")
+        self.assertEqual(rows[1][1], "alice")
+
+    def test_sort_blanks_first_for_timestamps(self):
+        pr1 = make_pr(1, created_at="2024-06-01T00:00:00Z")
+        pr2 = make_pr(2, created_at="")
+        data = make_data(prs=[pr1, pr2])
+        rows = run("pr,cd", sort="cd", data=data)
+        self.assertIn("2", rows[0][0])  # blank sorts first
+        self.assertIn("1", rows[1][0])
+
+    def test_sort_blanks_last_when_reversed(self):
+        pr1 = make_pr(1, created_at="2024-06-01T00:00:00Z")
+        pr2 = make_pr(2, created_at="")
+        data = make_data(prs=[pr1, pr2])
+        rows = run("pr,cd", sort="cd:R", data=data)
+        self.assertIn("1", rows[0][0])  # real date sorts first when reversed
+        self.assertIn("2", rows[1][0])
+
+    def test_sort_last_activity_blank_first(self):
+        import datetime
+        ts = (datetime.date.today() - datetime.timedelta(days=5)).isoformat() + "T12:00:00Z"
+        data = make_data(
+            prs=[make_pr(1), make_pr(2)],
+            last_activity={PRNumber(2): ts},
+        )
+        rows = run("pr,la", sort="la", data=data)
+        self.assertIn("1", rows[0][0])  # blank sorts first
+        self.assertIn("2", rows[1][0])
 
 
 class TestCommentColumn(unittest.TestCase):

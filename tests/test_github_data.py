@@ -47,11 +47,22 @@ def make_raw(
     )
 
 
-def pr_node(number: int, title: str = "Test PR", author: str = "alice", reviewers: list[str] | None = None) -> Node:
+def pr_node(
+    number: int,
+    title: str = "Test PR",
+    author: str = "alice",
+    reviewers: list[str] | None = None,
+    submitted_reviewers: list[str] | None = None,
+    submitted_reviewer_states: dict[str, str] | None = None,
+) -> Node:
     review_request_nodes = [{"requestedReviewer": {"login": r}} for r in (reviewers or [])]
+    states = submitted_reviewer_states or {}
+    review_nodes = [{"author": {"login": r}, "state": states.get(r, "COMMENTED")}
+                    for r in (submitted_reviewers or [])]
     return Node({"number": number, "title": title, "isDraft": False,
                  "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
-                 "reviewRequests": {"nodes": review_request_nodes}})
+                 "reviewRequests": {"nodes": review_request_nodes},
+                 "reviews": {"nodes": review_nodes}})
 
 
 def comment_node(body: str, author: str = "alice", created_at: str = "2024-01-15T10:00:00Z") -> Node:
@@ -267,6 +278,155 @@ class TestGithubPRReviewers(unittest.TestCase):
         raw = make_raw(pr_nodes=[node])
         data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
         self.assertEqual(data.all_prs[0].reviewers, [])
+
+    def test_submitted_reviewers_included_when_no_pending_request(self):
+        raw = make_raw(pr_nodes=[pr_node(1, submitted_reviewers=["bob", "carol"])])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewers, ["bob", "carol"])
+
+    def test_submitted_reviewers_deduplicated_with_pending(self):
+        raw = make_raw(pr_nodes=[pr_node(1, reviewers=["bob"], submitted_reviewers=["bob", "carol"])])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewers, ["bob", "carol"])
+
+    def test_pr_author_excluded_from_submitted_reviewers(self):
+        raw = make_raw(pr_nodes=[pr_node(1, author="alice", submitted_reviewers=["alice", "bob"])])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewers, ["bob"])
+
+    def test_ai_reviewer_excluded_from_pending_requests_by_default(self):
+        config = make_config(ai_authors={"copilot"})
+        raw = make_raw(pr_nodes=[pr_node(1, reviewers=["copilot", "bob"])])
+        data = GithubData.from_raw(config, make_marks(), make_args(include_ai=False), raw)
+        self.assertEqual(data.all_prs[0].reviewers, ["bob"])
+
+    def test_ai_reviewer_excluded_from_submitted_reviews_by_default(self):
+        config = make_config(ai_authors={"copilot"})
+        raw = make_raw(pr_nodes=[pr_node(1, submitted_reviewers=["copilot", "bob"])])
+        data = GithubData.from_raw(config, make_marks(), make_args(include_ai=False), raw)
+        self.assertEqual(data.all_prs[0].reviewers, ["bob"])
+
+    def test_ai_reviewer_included_with_include_ai_flag(self):
+        config = make_config(ai_authors={"copilot"})
+        raw = make_raw(pr_nodes=[pr_node(1, reviewers=["copilot", "bob"])])
+        data = GithubData.from_raw(config, make_marks(), make_args(include_ai=True), raw)
+        self.assertEqual(data.all_prs[0].reviewers, ["copilot", "bob"])
+
+    def test_reviewer_states_populated_from_submitted_reviews(self):
+        raw = make_raw(pr_nodes=[pr_node(1, submitted_reviewers=["bob", "carol"],
+                                         submitted_reviewer_states={"bob": "APPROVED", "carol": "CHANGES_REQUESTED"})])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewer_states, {"bob": "APPROVED", "carol": "CHANGES_REQUESTED"})
+
+    def test_reviewer_states_empty_for_pending_only(self):
+        raw = make_raw(pr_nodes=[pr_node(1, reviewers=["bob"])])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewer_states, {})
+
+    def test_reviewer_states_latest_wins_for_multiple_reviews(self):
+        node = pr_node(1)
+        node["reviews"] = {"nodes": [
+            {"author": {"login": "bob"}, "state": "CHANGES_REQUESTED"},
+            {"author": {"login": "bob"}, "state": "APPROVED"},
+        ]}
+        raw = make_raw(pr_nodes=[node])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.all_prs[0].reviewer_states.get("bob"), "APPROVED")
+
+
+class TestUnresolvedThreadCounts(unittest.TestCase):
+
+    def _make_thread(self, is_resolved: bool, author: str) -> Node:
+        return Node({"isResolved": is_resolved,
+                     "comments": {"nodes": [{"author": {"login": author}, "createdAt": "2024-01-01T00:00:00Z", "body": "x"}]}})
+
+    def _make_raw(self, threads: list[Node]) -> GithubRawData:
+        pr = pr_node(1)
+        comment_data = Node({
+            "comments": {"nodes": []},
+            "reviews": {"nodes": []},
+            "reviewThreads": {"nodes": list(threads)},
+        })
+        return make_raw(pr_nodes=[pr], comment_data={PRNumber(1): comment_data})
+
+    def test_counts_unresolved_threads(self):
+        raw = self._make_raw([self._make_thread(False, "bob"), self._make_thread(False, "carol")])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.unresolved_counts[PRNumber(1)], (2, 2, 0))
+
+    def test_ignores_resolved_threads(self):
+        raw = self._make_raw([self._make_thread(True, "bob"), self._make_thread(False, "carol")])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.unresolved_counts[PRNumber(1)], (1, 1, 0))
+
+    def test_splits_by_ai_author(self):
+        config = make_config(ai_authors={"copilot"})
+        raw = self._make_raw([self._make_thread(False, "copilot"), self._make_thread(False, "bob")])
+        data = GithubData.from_raw(config, make_marks(), make_args(), raw)
+        self.assertEqual(data.unresolved_counts[PRNumber(1)], (2, 1, 1))
+
+    def test_zero_when_all_resolved(self):
+        raw = self._make_raw([self._make_thread(True, "bob")])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.unresolved_counts[PRNumber(1)], (0, 0, 0))
+
+    def test_zero_when_no_threads(self):
+        raw = self._make_raw([])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.unresolved_counts[PRNumber(1)], (0, 0, 0))
+
+
+class TestLastActivityTimestamp(unittest.TestCase):
+
+    def _make_raw(self, comment_data: Node) -> GithubRawData:
+        return make_raw(pr_nodes=[pr_node(1)], comment_data={PRNumber(1): comment_data})
+
+    def test_uses_general_comment_timestamp(self):
+        raw = self._make_raw(Node({
+            "comments": {"nodes": [{"author": {"login": "a"}, "createdAt": "2024-06-01T10:00:00Z", "body": "hi"}]},
+            "reviews": {"nodes": []}, "reviewThreads": {"nodes": []},
+        }))
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.last_activity[PRNumber(1)], "2024-06-01T10:00:00Z")
+
+    def test_uses_review_submitted_at(self):
+        raw = self._make_raw(Node({
+            "comments": {"nodes": []},
+            "reviews": {"nodes": [{"author": {"login": "a"}, "submittedAt": "2024-07-01T10:00:00Z", "body": "lgtm"}]},
+            "reviewThreads": {"nodes": []},
+        }))
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.last_activity[PRNumber(1)], "2024-07-01T10:00:00Z")
+
+    def test_uses_inline_comment_timestamp(self):
+        thread = {"isResolved": False, "comments": {"nodes": [
+            {"author": {"login": "a"}, "createdAt": "2024-08-01T10:00:00Z", "body": "inline"}
+        ]}}
+        raw = self._make_raw(Node({
+            "comments": {"nodes": []}, "reviews": {"nodes": []},
+            "reviewThreads": {"nodes": [thread]},
+        }))
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.last_activity[PRNumber(1)], "2024-08-01T10:00:00Z")
+
+    def test_takes_most_recent_across_all_sources(self):
+        thread = {"isResolved": False, "comments": {"nodes": [
+            {"author": {"login": "a"}, "createdAt": "2024-08-01T10:00:00Z", "body": "inline"}
+        ]}}
+        raw = self._make_raw(Node({
+            "comments": {"nodes": [{"author": {"login": "a"}, "createdAt": "2024-06-01T10:00:00Z", "body": "x"}]},
+            "reviews": {"nodes": [{"author": {"login": "a"}, "submittedAt": "2024-07-01T10:00:00Z", "body": "x"}]},
+            "reviewThreads": {"nodes": [thread]},
+        }))
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.last_activity[PRNumber(1)], "2024-08-01T10:00:00Z")
+
+    def test_empty_when_no_activity(self):
+        raw = self._make_raw(Node({
+            "comments": {"nodes": []}, "reviews": {"nodes": []}, "reviewThreads": {"nodes": []},
+        }))
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.last_activity[PRNumber(1)], "")
 
 
 if __name__ == "__main__":

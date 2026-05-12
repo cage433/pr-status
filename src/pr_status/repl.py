@@ -10,7 +10,7 @@ from .pr_number import PRNumber
 from .report import run_report
 from .report_args import ReportArgs
 
-DEFAULT_CONFIG = os.path.expanduser("~/.conf/pr-status/config")
+DEFAULT_CONFIG = os.path.expanduser("~/.config/pr-status/config")
 MARKS_FILE     = os.path.expanduser("~/.cache/pr-status/marks")
 
 

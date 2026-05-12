@@ -80,19 +80,31 @@ class TestResolveSort(unittest.TestCase):
 
     def test_single_sort_col(self):
         spec = resolve(sort="author")
-        self.assertEqual(spec.sort_cols, ["author"])
+        self.assertEqual(spec.sort_cols, [("author", False)])
 
     def test_multiple_sort_cols(self):
         spec = resolve(sort="author,creation-date")
-        self.assertEqual(spec.sort_cols, ["author", "creation-date"])
+        self.assertEqual(spec.sort_cols, [("author", False), ("creation-date", False)])
 
     def test_sort_col_alias(self):
         spec = resolve(sort="pr")
-        self.assertEqual(spec.sort_cols, ["pull-request"])
+        self.assertEqual(spec.sort_cols, [("pull-request", False)])
 
     def test_sort_col_prefix(self):
         spec = resolve(sort="auth")
-        self.assertEqual(spec.sort_cols, ["author"])
+        self.assertEqual(spec.sort_cols, [("author", False)])
+
+    def test_sort_col_reversed(self):
+        spec = resolve(sort="author:R")
+        self.assertEqual(spec.sort_cols, [("author", True)])
+
+    def test_sort_col_reversed_lowercase(self):
+        spec = resolve(sort="author:r")
+        self.assertEqual(spec.sort_cols, [("author", True)])
+
+    def test_sort_mixed_reversed(self):
+        spec = resolve(sort="author,nc:R")
+        self.assertEqual(spec.sort_cols, [("author", False), ("num-comments", True)])
 
 
 class TestResolveFilters(unittest.TestCase):

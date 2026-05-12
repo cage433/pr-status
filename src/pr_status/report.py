@@ -1,8 +1,26 @@
+import re
 import sys
 from typing import Any
 
+
+class _Rev:
+    """Wraps a value so it sorts in reverse order."""
+    __slots__ = ("val",)
+    def __init__(self, val: Any) -> None: self.val = val
+    def __lt__(self, o: "_Rev") -> bool: return self.val > o.val
+    def __le__(self, o: "_Rev") -> bool: return self.val >= o.val
+    def __gt__(self, o: "_Rev") -> bool: return self.val < o.val
+    def __ge__(self, o: "_Rev") -> bool: return self.val <= o.val
+    def __eq__(self, o: object) -> bool: return isinstance(o, _Rev) and self.val == o.val
+
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+def _ljust_ansi(s: str, width: int) -> str:
+    visible = len(_ANSI_RE.sub('', s))
+    return s + ' ' * max(0, width - visible)
+
 from .config import Config
-from .date_utils import fmt_ts
+from .date_utils import fmt_ts, days_since
 from .github_data import GithubComment, GithubData, GithubPR
 from .github_raw_data import GithubRawData
 from .marks import Marks
@@ -36,13 +54,15 @@ def _report_data_lines(
     spec: ReportSpec,
     data: GithubData,
 ) -> list[list[str]]:
-    cols        = spec.cols
-    sort_cols   = spec.sort_cols
-    filters     = spec.filters
-    all_prs     = data.all_prs
-    loc_results = data.loc_results
-    rows_marked = data.rows_marked
-    rows_all    = data.rows_all
+    cols              = spec.cols
+    sort_cols         = spec.sort_cols
+    filters           = spec.filters
+    all_prs           = data.all_prs
+    loc_results       = data.loc_results
+    rows_marked       = data.rows_marked
+    rows_all          = data.rows_all
+    unresolved_counts = data.unresolved_counts
+    last_activity     = data.last_activity
 
     def get_author(pr: GithubPR) -> str:
         return config.author_name(pr.author)
@@ -76,18 +96,37 @@ def _report_data_lines(
     if sort_cols:
         def sort_key(pr: GithubPR) -> list[Any]:
             key: list[Any] = []
-            for col in sort_cols:
-                if col == "pull-request":           key.append(pr.number)
-                elif col == "title":                key.append(pr.title.lower())
-                elif col == "author":               key.append(get_author(pr).lower())
-                elif col == "creation-date":        key.append(pr.createdAt or "Z")
-                elif col == "last-comment-time":    key.append(get_last_comment(pr.number) or "Z")
-                elif col == "my-last-comment-time": key.append(get_last_comment(pr.number, user_only=True) or "Z")
+            for col, rev in sort_cols:
+                def k(v: Any) -> Any:
+                    return _Rev(v) if rev else v
+                if col == "pull-request":
+                    key.append(k(pr.number))
+                elif col == "title":
+                    key.append(k(pr.title.lower()))
+                elif col == "author":
+                    key.append(k(get_author(pr).lower()))
+                elif col == "creation-date":
+                    key.append(k(pr.createdAt or ""))
+                elif col == "last-comment-time":
+                    key.append(k(get_last_comment(pr.number) or ""))
+                elif col == "my-last-comment-time":
+                    key.append(k(get_last_comment(pr.number, user_only=True) or ""))
+                elif col == "mark":
+                    key.append(k(marks.get(pr.number) or ""))
                 elif col == "loc":
                     adds, dels = loc_results.get(pr.number, (0, 0))
-                    key.append(-(adds + dels))
+                    key.append(k(adds + dels))
                 elif col == "num-comments":
-                    key.append(-count_since(pr.number))
+                    key.append(k(count_since(pr.number)))
+                elif col == "last-activity":
+                    d = days_since(last_activity.get(pr.number, ""))
+                    key.append(k(-1 if d is None else d))
+                elif col in ("unresolved (all)", "unresolved (human)", "unresolved (ai)"):
+                    uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
+                    val = uc if col == "unresolved (all)" else uh if col == "unresolved (human)" else ua
+                    key.append(k(val))
+                elif col == "reviewers":
+                    key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
             return key
         all_prs.sort(key=sort_key)
 
@@ -115,8 +154,27 @@ def _report_data_lines(
             return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
         if col == "num-comments":
             return str(count_since(pr.number))
-        if col == "requested":
-            return ", ".join(config.author_name(r) for r in pr.reviewers)
+        if col == "reviewers":
+            GREEN, RED, RESET = "\033[32m", "\033[31m", "\033[0m"
+            use_color = sys.stdout.isatty()
+            parts = []
+            for r in pr.reviewers:
+                name = config.author_name(r)
+                state = pr.reviewer_states.get(r, "")
+                if use_color and state == "APPROVED":
+                    parts.append(GREEN + name + RESET)
+                elif use_color and state == "CHANGES_REQUESTED":
+                    parts.append(RED + name + RESET)
+                else:
+                    parts.append(name)
+            return ", ".join(parts)
+        if col == "last-activity":
+            d = days_since(last_activity.get(pr.number, ""))
+            return "" if d is None else str(d)
+        if col in ("unresolved (all)", "unresolved (human)", "unresolved (ai)"):
+            uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
+            val = uc if col == "unresolved (all)" else uh if col == "unresolved (human)" else ua
+            return str(val) if val else ""
         if col in ("comment", "comment-time", "comment-author"): return ""
         return ""
 
@@ -125,9 +183,9 @@ def _report_data_lines(
         return cell(fc, pr, compute_show_time(pr))
 
     def _pr_passes_filter(pr: GithubPR, fc: ColSpec, fv: set[str], neg: bool) -> bool:
-        if isinstance(fc, PlainColumn) and fc.name == "requested":
+        if isinstance(fc, PlainColumn) and fc.name == "reviewers":
             reviewer_names = {config.author_name(r) for r in pr.reviewers}
-            matched = (not pr.reviewers and "unassigned" in fv) or bool(reviewer_names & fv)
+            matched = (not pr.reviewers and "none" in fv) or bool(reviewer_names & fv)
             return not matched if neg else matched
         val = _filter_val(fc, pr)
         return (val not in fv) if neg else (val in fv)
@@ -199,7 +257,7 @@ def _render_report(
     cols = spec.cols
 
     def fmt_row(vals: list[str]) -> str:
-        parts = ["%-*s" % (col_width(c), val) if i < len(cols) - 1 else val
+        parts = [_ljust_ansi(val, col_width(c)) if i < len(cols) - 1 else val
                  for i, (c, val) in enumerate(zip(cols, vals))]
         return " ".join(parts)
 

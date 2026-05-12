@@ -31,6 +31,12 @@ query($owner: String!, $repo: String!, $cursor: String) {
             }
           }
         }
+        reviews(first: 100) {
+          nodes {
+            author { login }
+            state
+          }
+        }
       }
     }
   }
@@ -49,6 +55,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
       reviewThreads(first: 100) {
         nodes {
+          isResolved
           comments(first: 50) {
             nodes { author { login } createdAt body }
           }
@@ -109,5 +116,10 @@ def fetch_pr_comment_data(repo: GithubInfo, pr_num: PRNumber) -> Node:
            "-f", "repo=" + repo.repo_name,
            "-F", "number=" + str(pr_num)]
     r = subprocess.run(cmd, capture_output=True, text=True)
-    return (json.loads(r.stdout)["data"]["repository"]["pullRequest"] or {}) \
-           if r.returncode == 0 else {}
+    if r.returncode != 0:
+        return {}
+    try:
+        pr_data = ((json.loads(r.stdout).get("data") or {}).get("repository") or {}).get("pullRequest")
+        return pr_data or {}
+    except Exception:
+        return {}
