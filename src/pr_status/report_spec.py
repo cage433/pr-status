@@ -36,7 +36,8 @@ COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request",
                 "mct": "my-last-comment-time", "mk": "mark", "c": "comment",
                 "ct": "comment-time", "ca": "comment-author", "r": "reviewers",
                 "uc": "unresolved (all)", "uh": "unresolved (human)", "ua": "unresolved (ai)",
-                "la": "last-activity", "ag": "age", "d": "draft"}
+                "la": "last-activity", "ag": "age", "d": "draft",
+                "a": "author"}
 COL_HEADERS  = {"pull-request": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
                 "num-comments": "NC", "creation-date": "CREATED",
                 "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",

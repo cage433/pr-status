@@ -33,6 +33,11 @@ class TestResolveColumns(unittest.TestCase):
             PlainColumn("creation-date"), PlainColumn("mark"), PlainColumn("comment"),
         ])
 
+    def test_alias_takes_priority_over_prefix(self):
+        # 'a' is a prefix of both 'author' and 'age', but resolves unambiguously via alias
+        spec = resolve("a")
+        self.assertEqual(spec.cols, [PlainColumn("author")])
+
     def test_column_prefix_match(self):
         spec = resolve("tit,auth,loc")
         self.assertEqual(spec.cols, [PlainColumn("title"), PlainColumn("author"), PlainColumn("loc")])
