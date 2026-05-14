@@ -1,3 +1,4 @@
+import re
 import unittest
 
 from pr_status.config import Config, GithubInfo
@@ -17,7 +18,8 @@ def make_config(**kwargs) -> Config:
         ignored_prs=set(),
         ai_authors=set(),
         author_names={},
-        ignored_comments=set(),
+        ignored_comment_patterns=[],
+        ignored_title_patterns=[],
         aliases={},
     )
     defaults.update(kwargs)
@@ -150,7 +152,7 @@ class TestGithubDataFromRaw(unittest.TestCase):
 
     def test_ignored_comment_filtered(self):
         pr = PRNumber(1)
-        config = make_config(ignored_comments={"auto-generated"})
+        config = make_config(ignored_comment_patterns=[re.compile("auto-generated")])
         raw = make_raw(
             pr_nodes=[pr_node(1)],
             comment_data={pr: pr_comment_data(comments=[comment_node("auto-generated")])},
@@ -238,13 +240,54 @@ class TestGithubDataFromRaw(unittest.TestCase):
 
     def test_thread_filtered_when_all_comments_ignored(self):
         pr = PRNumber(1)
-        config = make_config(ignored_comments={"ignore me"})
+        config = make_config(ignored_comment_patterns=[re.compile("ignore me")])
         raw = make_raw(
             pr_nodes=[pr_node(1)],
             comment_data={pr: pr_comment_data(threads=[thread_node(comment_node("ignore me"))])},
         )
         data = GithubData.from_raw(config, make_marks(), make_args(), raw)
         self.assertEqual(data.rows_all[pr], [])
+
+    def test_ignored_comment_regex_partial_match(self):
+        pr = PRNumber(1)
+        config = make_config(ignored_comment_patterns=[re.compile(r"auto-gen")])
+        raw = make_raw(
+            pr_nodes=[pr_node(1)],
+            comment_data={pr: pr_comment_data(comments=[comment_node("auto-generated comment")])},
+        )
+        data = GithubData.from_raw(config, make_marks(), make_args(), raw)
+        self.assertEqual(data.rows_all[pr], [])
+
+    def test_ignored_comment_regex_no_match_kept(self):
+        pr = PRNumber(1)
+        config = make_config(ignored_comment_patterns=[re.compile(r"auto-gen")])
+        raw = make_raw(
+            pr_nodes=[pr_node(1)],
+            comment_data={pr: pr_comment_data(comments=[comment_node("manual comment")])},
+        )
+        data = GithubData.from_raw(config, make_marks(), make_args(), raw)
+        self.assertEqual(len(data.rows_all[pr]), 1)
+
+
+class TestIgnoredTitles(unittest.TestCase):
+
+    def test_pr_excluded_when_title_matches(self):
+        raw = make_raw(pr_nodes=[pr_node(1, title="[WIP] my feature"), pr_node(2, title="ready feature")])
+        config = make_config(ignored_title_patterns=[re.compile(r"\[WIP\]")])
+        data = GithubData.from_raw(config, make_marks(), make_args(), raw)
+        self.assertEqual([pr.number for pr in data.all_prs], [PRNumber(2)])
+
+    def test_pr_kept_when_title_does_not_match(self):
+        raw = make_raw(pr_nodes=[pr_node(1, title="ready feature")])
+        config = make_config(ignored_title_patterns=[re.compile(r"\[WIP\]")])
+        data = GithubData.from_raw(config, make_marks(), make_args(), raw)
+        self.assertEqual(len(data.all_prs), 1)
+
+    def test_multiple_patterns_any_match_excludes(self):
+        raw = make_raw(pr_nodes=[pr_node(1, title="chore: cleanup"), pr_node(2, title="feat: add thing")])
+        config = make_config(ignored_title_patterns=[re.compile(r"^chore:"), re.compile(r"^docs:")])
+        data = GithubData.from_raw(config, make_marks(), make_args(), raw)
+        self.assertEqual([pr.number for pr in data.all_prs], [PRNumber(2)])
 
     def test_mark_uses_max_timestamp_for_threads(self):
         pr = PRNumber(1)

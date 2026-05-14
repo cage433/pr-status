@@ -26,7 +26,7 @@ class GithubComment:
         timestamp_key: str = "createdAt",
     ) -> "GithubComment | None":
         stripped = node.get("body", "").strip()
-        if not stripped or stripped in config.ignored_comments:
+        if not stripped or any(p.search(stripped) for p in config.ignored_comment_patterns):
             return None
         if not args.include_ai and config.is_ai_author(node_login(node)):
             return None
@@ -73,9 +73,12 @@ class GithubPR:
                     seen.add(login)
                     reviewers.append(login)
 
+            title = node["title"]
+            if any(p.search(title) for p in config.ignored_title_patterns):
+                continue
             result.append(GithubPR(
                 number=PRNumber(node["number"]),
-                title=node["title"],
+                title=title,
                 isDraft=node.get("isDraft", False),
                 createdAt=node.get("createdAt", ""),
                 author=pr_author,

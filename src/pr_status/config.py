@@ -19,7 +19,8 @@ class Config:
     ignored_prs: set[PRNumber]
     ai_authors: set[str]
     author_names: dict[str, str]
-    ignored_comments: set[str]
+    ignored_comment_patterns: list[re.Pattern]
+    ignored_title_patterns: list[re.Pattern]
     aliases: dict[str, str]
     max_threads: int = 50
     config_file: str = ""
@@ -38,7 +39,8 @@ class Config:
         ignored_prs: set[PRNumber] = set()
         ai_authors: set[str] = set()
         author_names: dict[str, str] = {}
-        ignored_comments: set[str] = set()
+        ignored_comment_patterns: list[re.Pattern] = []
+        ignored_title_patterns: list[re.Pattern] = []
         aliases: dict[str, str] = {}
         max_threads = 50
 
@@ -85,9 +87,21 @@ class Config:
                         continue
                     m = re.match(r'^ignore-comment:\s*(.*)', line)
                     if m:
-                        for c in m.group(1).split(","):
-                            c = c.strip()
-                            if c: ignored_comments.add(c)
+                        pat = m.group(1).strip()
+                        if pat:
+                            try:
+                                ignored_comment_patterns.append(re.compile(pat))
+                            except re.error:
+                                pass
+                        continue
+                    m = re.match(r'^ignore-title:\s*(.*)', line)
+                    if m:
+                        pat = m.group(1).strip()
+                        if pat:
+                            try:
+                                ignored_title_patterns.append(re.compile(pat))
+                            except re.error:
+                                pass
                         continue
                     m = re.match(r'^max-threads:\s*(.*)', line)
                     if m:
@@ -108,7 +122,8 @@ class Config:
             repo=GithubInfo(owner=owner, repo_name=repo_name),
             ignored_authors=ignored_authors, ignored_prs=ignored_prs,
             ai_authors=ai_authors, author_names=author_names,
-            ignored_comments=ignored_comments,
+            ignored_comment_patterns=ignored_comment_patterns,
+            ignored_title_patterns=ignored_title_patterns,
             aliases=aliases,
             max_threads=max_threads,
             config_file=config_file,

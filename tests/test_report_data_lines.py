@@ -17,7 +17,8 @@ def make_config(**kwargs) -> Config:
         ignored_prs=set(),
         ai_authors=set(),
         author_names={},
-        ignored_comments=set(),
+        ignored_comment_patterns=[],
+        ignored_title_patterns=[],
         aliases={},
     )
     defaults.update(kwargs)
