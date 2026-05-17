@@ -10,4 +10,5 @@ if ! command -v rlwrap &>/dev/null; then
     exit 1
 fi
 
-exec rlwrap uv run repl "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec rlwrap uv run --project "$SCRIPT_DIR" repl "$@"
