@@ -321,6 +321,7 @@ def _render_report(
             parts.append(cell)
         print(" ".join(parts))
 
+    _ROW_RESET = "\033[0m" if sys.stdout.isatty() else ""
     print(fmt_row(["-" * widths[i] for i in range(len(cols))]))
     for row in rows:
-        print(fmt_row(row))
+        print(fmt_row(row) + _ROW_RESET)
