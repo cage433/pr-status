@@ -3,6 +3,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 LOG_FILE = os.path.expanduser("~/.cache/pr-status/youtrack.log")
@@ -44,4 +45,6 @@ def _fetch_state(url: str, token: str, ticket_id: str) -> str:
 
 
 def fetch_states(url: str, token: str, ticket_ids: list[str]) -> dict[str, str]:
-    return {tid: _fetch_state(url, token, tid) for tid in ticket_ids}
+    with ThreadPoolExecutor(max_workers=min(len(ticket_ids), 10)) as ex:
+        futures = {ex.submit(_fetch_state, url, token, tid): tid for tid in ticket_ids}
+        return {futures[f]: f.result() for f in as_completed(futures)}
