@@ -8,7 +8,6 @@ from . import gh_api
 from .marks import Marks
 from .pr_number import PRNumber
 from .report import run_report
-from . import youtrack
 from .report_args import ReportArgs
 
 DEFAULT_CONFIG = os.path.expanduser("~/.config/pr-status/config")
@@ -112,10 +111,6 @@ def run_repl(
                 config.repo.gh_user = gh_api.get_gh_user()
                 print("Config reloaded.")
 
-            elif cmd in ("ryc",):
-                youtrack.clear_cache()
-                print("YouTrack cache cleared.")
-
             elif cmd in ("help", "h"):
                 show_help(script_name, config.config_file or DEFAULT_CONFIG, arg)
 
@@ -123,7 +118,7 @@ def run_repl(
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, mark, unmark, focus, unfocus, reload, ryc, help, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Use: report, mark, unmark, focus, unfocus, reload, help, quit" % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()

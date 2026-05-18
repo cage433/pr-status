@@ -1,30 +1,7 @@
 import json
-import os
+import sys
 import urllib.error
 import urllib.request
-
-CACHE_FILE = os.path.expanduser("~/.cache/pr-status/youtrack_cache.json")
-
-
-def load_cache() -> dict[str, str]:
-    if os.path.isfile(CACHE_FILE):
-        try:
-            with open(CACHE_FILE) as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
-def save_cache(cache: dict[str, str]) -> None:
-    os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
-        json.dump(cache, f)
-
-
-def clear_cache() -> None:
-    if os.path.isfile(CACHE_FILE):
-        os.remove(CACHE_FILE)
 
 
 def _fetch_state(url: str, token: str, ticket_id: str) -> str:
@@ -43,16 +20,12 @@ def _fetch_state(url: str, token: str, ticket_id: str) -> str:
                     return val.get("name", "—")
         return "—"
     except urllib.error.HTTPError as e:
+        print("YouTrack error for %s: HTTP %d" % (ticket_id, e.code), file=sys.stderr)
         return "NOT FOUND" if e.code == 404 else "ERROR"
-    except Exception:
+    except Exception as e:
+        print("YouTrack error for %s: %s" % (ticket_id, e), file=sys.stderr)
         return "ERROR"
 
 
 def fetch_states(url: str, token: str, ticket_ids: list[str]) -> dict[str, str]:
-    cache = load_cache()
-    missing = [tid for tid in ticket_ids if tid not in cache]
-    for tid in missing:
-        cache[tid] = _fetch_state(url, token, tid)
-    if missing:
-        save_cache(cache)
-    return {tid: cache.get(tid, "—") for tid in ticket_ids}
+    return {tid: _fetch_state(url, token, tid) for tid in ticket_ids}
