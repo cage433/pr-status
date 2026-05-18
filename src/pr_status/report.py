@@ -139,13 +139,13 @@ def _report_data_lines(
                     key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
                 elif col == "draft":
                     key.append(k(pr.isDraft))
-                elif col == "yt":
+                elif col == "youtrack-ticket":
                     m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) + '-' + m.group(2) if m else "MISSING"))
-                elif col == "yp":
+                elif col == "youtrack-project":
                     m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) if m else "MISSING"))
-                elif col == "yi":
+                elif col == "youtrack-id":
                     m = _YT_RE.match(pr.title)
                     key.append(k(int(m.group(2)) if m else 10**18))
             return key
@@ -203,13 +203,13 @@ def _report_data_lines(
             return str(val) if val else ""
         if col == "draft":
             return "true" if pr.isDraft else "false"
-        if col == "yt":
+        if col == "youtrack-ticket":
             m = _YT_RE.match(pr.title)
             return m.group(1) + '-' + m.group(2) if m else "MISSING"
-        if col == "yp":
+        if col == "youtrack-project":
             m = _YT_RE.match(pr.title)
             return m.group(1) if m else "MISSING"
-        if col == "yi":
+        if col == "youtrack-id":
             m = _YT_RE.match(pr.title)
             return m.group(2) if m else "MISSING"
         if col in ("comment", "comment-time", "comment-author"): return ""
