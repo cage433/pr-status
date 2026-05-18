@@ -744,6 +744,115 @@ class TestYTColumn(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("1", rows[0][0])
 
+    def test_yt_full_ticket_from_dashed_project(self):
+        data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "MY-PROJECT-456")
+
+
+class TestYPColumn(unittest.TestCase):
+
+    def test_yp_extracts_simple_project_name(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-123 fix something")])
+        rows = run("yp", data=data)
+        self.assertEqual(rows[0][0], "PROJ")
+
+    def test_yp_extracts_dashed_project_name(self):
+        data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
+        rows = run("yp", data=data)
+        self.assertEqual(rows[0][0], "MY-PROJECT")
+
+    def test_yp_missing_when_no_ticket_id(self):
+        data = make_data(prs=[make_pr(1, title="no ticket here")])
+        rows = run("yp", data=data)
+        self.assertEqual(rows[0][0], "MISSING")
+
+    def test_yp_missing_when_ticket_not_at_start(self):
+        data = make_data(prs=[make_pr(1, title="[WIP] PROJ-123")])
+        rows = run("yp", data=data)
+        self.assertEqual(rows[0][0], "MISSING")
+
+    def test_yp_sort_alphabetical(self):
+        data = make_data(prs=[
+            make_pr(1, title="ZZZ-1 last"),
+            make_pr(2, title="AAA-2 first"),
+        ])
+        rows = run("pr,yp", sort="yp", data=data)
+        self.assertIn("2", rows[0][0])
+        self.assertIn("1", rows[1][0])
+
+    def test_yp_filter_by_project(self):
+        data = make_data(prs=[
+            make_pr(1, title="PROJ-1 a"),
+            make_pr(2, title="OTHER-2 b"),
+        ])
+        rows = run("pr,yp", filters=["yp=PROJ"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("1", rows[0][0])
+
+    def test_yp_filter_missing(self):
+        data = make_data(prs=[
+            make_pr(1, title="PROJ-1 a"),
+            make_pr(2, title="no ticket"),
+        ])
+        rows = run("pr,yp", filters=["yp=MISSING"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("2", rows[0][0])
+
+
+class TestYIColumn(unittest.TestCase):
+
+    def test_yi_extracts_numeric_id(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-123 fix something")])
+        rows = run("yi", data=data)
+        self.assertEqual(rows[0][0], "123")
+
+    def test_yi_extracts_id_from_dashed_project(self):
+        data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
+        rows = run("yi", data=data)
+        self.assertEqual(rows[0][0], "456")
+
+    def test_yi_missing_when_no_ticket_id(self):
+        data = make_data(prs=[make_pr(1, title="no ticket here")])
+        rows = run("yi", data=data)
+        self.assertEqual(rows[0][0], "MISSING")
+
+    def test_yi_sort_numeric(self):
+        data = make_data(prs=[
+            make_pr(1, title="PROJ-9 low"),
+            make_pr(2, title="PROJ-10 high"),
+        ])
+        rows = run("pr,yi", sort="yi", data=data)
+        self.assertIn("1", rows[0][0])   # 9 < 10 numerically
+        self.assertIn("2", rows[1][0])
+
+    def test_yi_sort_missing_last(self):
+        data = make_data(prs=[
+            make_pr(1, title="no ticket"),
+            make_pr(2, title="PROJ-1 has ticket"),
+        ])
+        rows = run("pr,yi", sort="yi", data=data)
+        self.assertIn("2", rows[0][0])
+        self.assertIn("1", rows[1][0])
+
+    def test_yi_filter_by_id(self):
+        data = make_data(prs=[
+            make_pr(1, title="PROJ-42 a"),
+            make_pr(2, title="PROJ-99 b"),
+        ])
+        rows = run("pr,yi", filters=["yi=42"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("1", rows[0][0])
+
+    def test_yi_filter_missing(self):
+        data = make_data(prs=[
+            make_pr(1, title="PROJ-1 a"),
+            make_pr(2, title="no ticket"),
+        ])
+        rows = run("pr,yi", filters=["yi=MISSING"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("2", rows[0][0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,7 +14,7 @@ class _Rev:
     def __eq__(self, o: object) -> bool: return isinstance(o, _Rev) and self.val == o.val
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
-_YT_RE   = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*-\d+)')
+_YT_RE   = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
 
 def _ljust_ansi(s: str, width: int) -> str:
     visible = len(_ANSI_RE.sub('', s))
@@ -141,7 +141,13 @@ def _report_data_lines(
                     key.append(k(pr.isDraft))
                 elif col == "yt":
                     m = _YT_RE.match(pr.title)
+                    key.append(k(m.group(1) + '-' + m.group(2) if m else "MISSING"))
+                elif col == "yp":
+                    m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) if m else "MISSING"))
+                elif col == "yi":
+                    m = _YT_RE.match(pr.title)
+                    key.append(k(int(m.group(2)) if m else 10**18))
             return key
         all_prs.sort(key=sort_key)
 
@@ -199,7 +205,13 @@ def _report_data_lines(
             return "true" if pr.isDraft else "false"
         if col == "yt":
             m = _YT_RE.match(pr.title)
+            return m.group(1) + '-' + m.group(2) if m else "MISSING"
+        if col == "yp":
+            m = _YT_RE.match(pr.title)
             return m.group(1) if m else "MISSING"
+        if col == "yi":
+            m = _YT_RE.match(pr.title)
+            return m.group(2) if m else "MISSING"
         if col in ("comment", "comment-time", "comment-author"): return ""
         return ""
 
