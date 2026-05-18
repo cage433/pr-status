@@ -666,5 +666,84 @@ class TestMultiplePRs(unittest.TestCase):
         self.assertEqual(len(rows[0]), 3)
 
 
+class TestYTColumn(unittest.TestCase):
+
+    def test_yt_extracts_uppercase_ticket_id(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-123 fix something")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "PROJ-123")
+
+    def test_yt_extracts_lowercase_ticket_id(self):
+        data = make_data(prs=[make_pr(1, title="proj-42 fix something")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "proj-42")
+
+    def test_yt_extracts_mixed_case_ticket_id(self):
+        data = make_data(prs=[make_pr(1, title="MyProj-7 do a thing")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "MyProj-7")
+
+    def test_yt_extracts_alphanumeric_project_name(self):
+        data = make_data(prs=[make_pr(1, title="proj2b-99 stuff")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "proj2b-99")
+
+    def test_yt_extracts_project_name_with_internal_dashes(self):
+        data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "MY-PROJECT-456")
+
+    def test_yt_missing_when_no_ticket_id(self):
+        data = make_data(prs=[make_pr(1, title="fix something without ticket")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "MISSING")
+
+    def test_yt_missing_when_ticket_not_at_start(self):
+        data = make_data(prs=[make_pr(1, title="[WIP] PROJ-123 description")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "MISSING")
+
+    def test_yt_missing_when_no_digits_after_dash(self):
+        data = make_data(prs=[make_pr(1, title="PROJ- something")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "MISSING")
+
+    def test_yt_sort_alphabetical(self):
+        data = make_data(prs=[
+            make_pr(1, title="ZZZ-10 last"),
+            make_pr(2, title="AAA-1 first"),
+        ])
+        rows = run("pr,yt", sort="yt", data=data)
+        self.assertIn("2", rows[0][0])
+        self.assertIn("1", rows[1][0])
+
+    def test_yt_sort_missing_last(self):
+        data = make_data(prs=[
+            make_pr(1, title="no ticket here"),
+            make_pr(2, title="AAA-1 has ticket"),
+        ])
+        rows = run("pr,yt", sort="yt", data=data)
+        self.assertIn("2", rows[0][0])
+        self.assertIn("1", rows[1][0])
+
+    def test_yt_filter_by_missing(self):
+        data = make_data(prs=[
+            make_pr(1, title="PROJ-1 has ticket"),
+            make_pr(2, title="no ticket"),
+        ])
+        rows = run("pr,yt", filters=["yt=MISSING"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("2", rows[0][0])
+
+    def test_yt_filter_by_ticket_id(self):
+        data = make_data(prs=[
+            make_pr(1, title="PROJ-1 a"),
+            make_pr(2, title="OTHER-2 b"),
+        ])
+        rows = run("pr,yt", filters=["yt=PROJ-1"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("1", rows[0][0])
+
+
 if __name__ == "__main__":
     unittest.main()
