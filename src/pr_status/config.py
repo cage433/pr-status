@@ -24,6 +24,8 @@ class Config:
     aliases: dict[str, str]
     max_threads: int = 50
     config_file: str = ""
+    youtrack_url: str = ""
+    youtrack_token: str = ""
 
     def author_name(self, author: str) -> str:
         return self.author_names.get(author, author)
@@ -43,6 +45,8 @@ class Config:
         ignored_title_patterns: list[re.Pattern] = []
         aliases: dict[str, str] = {}
         max_threads = 50
+        youtrack_url = ""
+        youtrack_token = ""
 
         if config_file and os.path.isfile(config_file):
             with open(config_file) as f:
@@ -117,6 +121,12 @@ class Config:
                         if aname and acmd:
                             aliases[aname] = acmd
                         continue
+                    m = re.match(r'^youtrack-url:\s*(.*)', line)
+                    if m:
+                        youtrack_url = m.group(1).strip(); continue
+                    m = re.match(r'^youtrack-token:\s*(.*)', line)
+                    if m:
+                        youtrack_token = m.group(1).strip(); continue
 
         return Config(
             repo=GithubInfo(owner=owner, repo_name=repo_name),
@@ -127,4 +137,6 @@ class Config:
             aliases=aliases,
             max_threads=max_threads,
             config_file=config_file,
+            youtrack_url=youtrack_url,
+            youtrack_token=youtrack_token,
         )
