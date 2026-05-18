@@ -14,7 +14,7 @@ class _Rev:
     def __eq__(self, o: object) -> bool: return isinstance(o, _Rev) and self.val == o.val
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
-_YT_RE   = re.compile(r'^([A-Z]+-\d+)')
+_YT_RE   = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*-\d+)')
 
 def _ljust_ansi(s: str, width: int) -> str:
     visible = len(_ANSI_RE.sub('', s))
