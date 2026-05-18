@@ -1,7 +1,16 @@
 import json
-import sys
+import os
 import urllib.error
 import urllib.request
+from datetime import datetime
+
+LOG_FILE = os.path.expanduser("~/.cache/pr-status/youtrack.log")
+
+
+def _log(msg: str) -> None:
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    with open(LOG_FILE, "a") as f:
+        f.write("[%s] %s\n" % (datetime.now().isoformat(timespec="seconds"), msg))
 
 
 def _fetch_state(url: str, token: str, ticket_id: str) -> str:
@@ -20,10 +29,11 @@ def _fetch_state(url: str, token: str, ticket_id: str) -> str:
                     return val.get("name", "—")
         return "—"
     except urllib.error.HTTPError as e:
-        print("YouTrack error for %s: HTTP %d" % (ticket_id, e.code), file=sys.stderr)
+        body = e.read().decode(errors="replace")
+        _log("HTTP %d for %s: %s" % (e.code, ticket_id, body[:300]))
         return "NOT FOUND" if e.code == 404 else "ERROR"
     except Exception as e:
-        print("YouTrack error for %s: %s" % (ticket_id, e), file=sys.stderr)
+        _log("Error for %s: %s" % (ticket_id, e))
         return "ERROR"
 
 

@@ -51,16 +51,6 @@ def run_report(
         spec = ReportSpec.resolve(args)
         raw  = GithubRawData.fetch(config, spec.all_cols)
         data = GithubData.from_raw(config, marks, args, raw)
-        if "youtrack-state" in spec.all_cols and config.youtrack_url and config.youtrack_token:
-            ticket_ids = [
-                m.group(1) + "-" + m.group(2)
-                for pr in data.all_prs
-                if (m := _YT_RE.match(pr.title))
-            ]
-            if ticket_ids:
-                data.youtrack_states = youtrack.fetch_states(
-                    config.youtrack_url, config.youtrack_token, ticket_ids
-                )
         _render_report(config, marks, args, spec, data)
     except _ListError as e:
         print(str(e), file=sys.stderr)
@@ -260,6 +250,11 @@ def _report_data_lines(
     if pr_filters:
         all_prs = [pr for pr in all_prs
                    if all(_pr_passes_filter(pr, fc, fv, neg) for fc, fv, neg in pr_filters)]
+
+    if "youtrack-state" in spec.all_cols and config.youtrack_url and config.youtrack_token:
+        ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
+        if ticket_ids:
+            youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
 
     _COMMENT_NAMES = frozenset({"comment", "comment-time", "comment-author"})
     _comment_in_cols = any(isinstance(c, PlainColumn) and c.name in _COMMENT_NAMES for c in cols)
