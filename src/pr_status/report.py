@@ -34,6 +34,7 @@ from .github_raw_data import GithubRawData
 from .marks import Marks
 from .pr_number import PRNumber
 from .report_args import ReportArgs
+from . import youtrack
 from .report_spec import (
     ColSpec, PlainColumn, Comparison, _ListError,
     TIMESTAMP_COLS, col_header, col_header_lines, col_is_numeric, col_width,
@@ -50,6 +51,16 @@ def run_report(
         spec = ReportSpec.resolve(args)
         raw  = GithubRawData.fetch(config, spec.all_cols)
         data = GithubData.from_raw(config, marks, args, raw)
+        if "youtrack-state" in spec.all_cols and config.youtrack_url and config.youtrack_token:
+            ticket_ids = [
+                m.group(1) + "-" + m.group(2)
+                for pr in data.all_prs
+                if (m := _YT_RE.match(pr.title))
+            ]
+            if ticket_ids:
+                data.youtrack_states = youtrack.fetch_states(
+                    config.youtrack_url, config.youtrack_token, ticket_ids
+                )
         _render_report(config, marks, args, spec, data)
     except _ListError as e:
         print(str(e), file=sys.stderr)
@@ -71,6 +82,7 @@ def _report_data_lines(
     rows_all          = data.rows_all
     unresolved_counts = data.unresolved_counts
     last_activity     = data.last_activity
+    youtrack_states   = data.youtrack_states
 
     def get_author(pr: GithubPR) -> str:
         return config.author_name(pr.author)
@@ -148,6 +160,10 @@ def _report_data_lines(
                 elif col == "youtrack-id":
                     m = _YT_RE.match(pr.title)
                     key.append(k(int(m.group(2)) if m else 10**18))
+                elif col == "youtrack-state":
+                    m = _YT_RE.match(pr.title)
+                    tid = m.group(1) + "-" + m.group(2) if m else None
+                    key.append(k(youtrack_states.get(tid, "MISSING") if tid else "MISSING"))
             return key
         all_prs.sort(key=sort_key)
 
@@ -212,6 +228,12 @@ def _report_data_lines(
         if col == "youtrack-id":
             m = _YT_RE.match(pr.title)
             return m.group(2) if m else "MISSING"
+        if col == "youtrack-state":
+            m = _YT_RE.match(pr.title)
+            if not m:
+                return "MISSING"
+            tid = m.group(1) + "-" + m.group(2)
+            return youtrack_states.get(tid, "—")
         if col in ("comment", "comment-time", "comment-author"): return ""
         return ""
 

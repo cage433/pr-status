@@ -26,6 +26,7 @@ Report Columns:
   youtrack-ticket       YT      YouTrack ticket ID (e.g. PROJ-123); MISSING if absent
   youtrack-project      YP      YouTrack project name (e.g. PROJ); MISSING if absent
   youtrack-id           YI      YouTrack numeric ID (e.g. 123); MISSING if absent
+  youtrack-state        YS      YouTrack ticket state (requires youtrack-url/token in config)
 
   Names and aliases are case-insensitive. Unambiguous prefixes also work
   (e.g. 'cre' for 'creation-date').

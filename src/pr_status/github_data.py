@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .config import Config
@@ -96,6 +96,7 @@ class GithubData:
     rows_all: dict[PRNumber, list[GithubComment]]
     unresolved_counts: dict[PRNumber, tuple[int, int, int]]  # (all, human, ai)
     last_activity: dict[PRNumber, str]  # ISO timestamp of most recent comment or thread resolution
+    youtrack_states: dict[str, str] = field(default_factory=dict)  # ticket_id -> state
 
     @staticmethod
     def _collect_comments(

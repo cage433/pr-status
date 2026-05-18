@@ -31,7 +31,7 @@ KNOWN_COLS   = ["pull-request", "title", "author", "loc", "num-comments",
                 "comment", "comment-time", "comment-author", "reviewers",
                 "unresolved (all)", "unresolved (human)", "unresolved (ai)",
                 "last-activity", "age", "draft",
-                "youtrack-ticket", "youtrack-project", "youtrack-id"]
+                "youtrack-ticket", "youtrack-project", "youtrack-id", "youtrack-state"]
 COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request",
                 "cd": "creation-date", "lct": "last-comment-time",
                 "mct": "my-last-comment-time", "mk": "mark", "c": "comment",
@@ -39,7 +39,8 @@ COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request",
                 "uc": "unresolved (all)", "uh": "unresolved (human)", "ua": "unresolved (ai)",
                 "la": "last-activity", "ag": "age", "d": "draft",
                 "a": "author",
-                "yt": "youtrack-ticket", "yp": "youtrack-project", "yi": "youtrack-id"}
+                "yt": "youtrack-ticket", "yp": "youtrack-project", "yi": "youtrack-id",
+                "ys": "youtrack-state"}
 COL_HEADERS  = {"pull-request": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
                 "num-comments": "NC", "creation-date": "CREATED",
                 "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
@@ -47,14 +48,16 @@ COL_HEADERS  = {"pull-request": "PR", "title": "TITLE", "author": "AUTHOR", "loc
                 "reviewers": "REVIEWERS",
                 "unresolved (all)": "UC", "unresolved (human)": "UH", "unresolved (ai)": "UA",
                 "last-activity": "LA", "age": "AG", "draft": "D",
-                "youtrack-ticket": "YT", "youtrack-project": "YP", "youtrack-id": "YI"}
+                "youtrack-ticket": "YT", "youtrack-project": "YP", "youtrack-id": "YI",
+                "youtrack-state": "YS"}
 COL_WIDTHS   = {"pull-request": 6, "title": 60,       "author": 15,       "loc": 15,
                 "num-comments": 4, "creation-date": 17,
                 "last-comment-time": 17, "my-last-comment-time": 17, "mark": 17,
                 "comment": 70, "comment-time": 17, "comment-author": 20, "reviewers": 20,
                 "unresolved (all)": 4, "unresolved (human)": 4, "unresolved (ai)": 4,
                 "last-activity": 4, "age": 4, "draft": 5,
-                "youtrack-ticket": 12, "youtrack-project": 12, "youtrack-id": 7}
+                "youtrack-ticket": 12, "youtrack-project": 12, "youtrack-id": 7,
+                "youtrack-state": 15}
 TIMESTAMP_COLS = {"creation-date", "last-comment-time", "my-last-comment-time", "mark", "comment-time"}
 NUMERIC_COLS   = {"num-comments", "unresolved (all)", "unresolved (human)", "unresolved (ai)",
                   "last-activity", "age"}
