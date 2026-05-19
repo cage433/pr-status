@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from pr_status.config import Config, GithubInfo
 from pr_status.github_data import GithubComment, GithubData, GithubPR
@@ -917,6 +918,19 @@ class TestValidColumn(unittest.TestCase):
         rows_via_alias = run("pr,v", data=data)
         rows_via_name  = run("pr,valid", data=data)
         self.assertEqual(rows_via_alias, rows_via_name)
+
+    def test_filter_fetches_youtrack_states_before_applying(self):
+        # Regression: YouTrack states must be fetched before filters are evaluated.
+        # With the bug, youtrack_states was empty at filter time so every PR looked
+        # invalid and V=false would match everything, including truly-valid PRs.
+        valid_pr   = self._pr_with_ticket(1)  # has ticket, reviewers, state="Review"
+        invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
+        config = make_config(youtrack_url="http://yt", youtrack_token="tok")
+        data   = make_data(prs=[valid_pr, invalid_pr])   # no pre-populated states
+        with patch("pr_status.report.youtrack.fetch_states", return_value={"PROJ-1": "Review"}):
+            rows = run("pr,v", filters=["v=false"], config=config, data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("2", rows[0][0])
 
 
 if __name__ == "__main__":
