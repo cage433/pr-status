@@ -56,6 +56,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       reviewThreads(first: 100) {
         nodes {
           isResolved
+          isOutdated
           comments(first: 50) {
             nodes { author { login } createdAt body }
           }

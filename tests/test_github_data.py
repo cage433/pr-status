@@ -76,8 +76,8 @@ def review_node(body: str, author: str = "alice", submitted_at: str = "2024-01-1
     return Node({"body": body, "submittedAt": submitted_at, "author": {"login": author}})
 
 
-def thread_node(*nodes: Node) -> Node:
-    return Node({"comments": {"nodes": list(nodes)}})
+def thread_node(*nodes: Node, is_outdated: bool = False, is_resolved: bool = False) -> Node:
+    return Node({"isOutdated": is_outdated, "isResolved": is_resolved, "comments": {"nodes": list(nodes)}})
 
 
 def pr_comment_data(
@@ -237,6 +237,15 @@ class TestGithubDataFromRaw(unittest.TestCase):
         rows = data.rows_all[pr]
         # thread starts at 10:00 so sorts before standalone at 10:30
         self.assertEqual([r.body for r in rows], ["thread c1", "thread c2", "standalone"])
+
+    def test_outdated_thread_ignored(self):
+        pr = PRNumber(1)
+        raw = make_raw(
+            pr_nodes=[pr_node(1)],
+            comment_data={pr: pr_comment_data(threads=[thread_node(comment_node("nit"), is_outdated=True)])},
+        )
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.rows_all[pr], [])
 
     def test_thread_filtered_when_all_comments_ignored(self):
         pr = PRNumber(1)
@@ -438,6 +447,13 @@ class TestUnresolvedThreadCounts(unittest.TestCase):
         data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
         self.assertEqual(data.unresolved_counts[PRNumber(1)], (0, 0, 0))
 
+    def test_ignores_outdated_threads(self):
+        outdated = Node({"isResolved": False, "isOutdated": True,
+                         "comments": {"nodes": [{"author": {"login": "bob"}, "createdAt": "2024-01-01T00:00:00Z", "body": "x"}]}})
+        raw = self._make_raw([outdated, self._make_thread(False, "carol")])
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.unresolved_counts[PRNumber(1)], (1, 1, 0))
+
 
 class TestLastActivityTimestamp(unittest.TestCase):
 
@@ -490,6 +506,18 @@ class TestLastActivityTimestamp(unittest.TestCase):
         }))
         data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
         self.assertEqual(data.last_activity[PRNumber(1)], "")
+
+    def test_outdated_thread_excluded_from_last_activity(self):
+        thread = {"isResolved": False, "isOutdated": True, "comments": {"nodes": [
+            {"author": {"login": "a"}, "createdAt": "2024-08-01T10:00:00Z", "body": "outdated"}
+        ]}}
+        raw = self._make_raw(Node({
+            "comments": {"nodes": [{"author": {"login": "a"}, "createdAt": "2024-06-01T10:00:00Z", "body": "x"}]},
+            "reviews": {"nodes": []},
+            "reviewThreads": {"nodes": [thread]},
+        }))
+        data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
+        self.assertEqual(data.last_activity[PRNumber(1)], "2024-06-01T10:00:00Z")
 
 
 if __name__ == "__main__":

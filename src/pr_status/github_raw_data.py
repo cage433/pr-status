@@ -26,7 +26,7 @@ class GithubRawData:
 
     def review_thread_nodes(self, pr_num: PRNumber) -> list[list[Node]]:
         threads = self.comment_data.get(pr_num, {}).get("reviewThreads", {}).get("nodes", [])
-        return [t.get("comments", {}).get("nodes", []) for t in threads]
+        return [t.get("comments", {}).get("nodes", []) for t in threads if not t.get("isOutdated")]
 
     def last_activity_timestamp(self, pr_num: PRNumber) -> str:
         timestamps: list[str] = []
@@ -46,7 +46,7 @@ class GithubRawData:
         threads = (self.comment_data.get(pr_num) or {}).get("reviewThreads", {}).get("nodes", [])
         total = human = ai = 0
         for thread in threads:
-            if thread.get("isResolved"):
+            if thread.get("isResolved") or thread.get("isOutdated"):
                 continue
             comments = (thread.get("comments") or {}).get("nodes", [])
             author = (comments[0].get("author") or {}).get("login", "") if comments else ""
