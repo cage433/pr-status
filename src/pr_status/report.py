@@ -143,7 +143,9 @@ def _report_data_lines(
                     key.append(k(pr.isDraft))
                 elif col == "valid":
                     _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-                    is_valid = bool(pr.reviewers) and ua == 0 and bool(_YT_RE.match(pr.title))
+                    m = _YT_RE.match(pr.title)
+                    yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
+                    is_valid = bool(pr.reviewers) and ua == 0 and m is not None and yt_state == "Review"
                     key.append(k(is_valid))
                 elif col == "youtrack-ticket":
                     m = _YT_RE.match(pr.title)
@@ -215,7 +217,9 @@ def _report_data_lines(
             return "true" if pr.isDraft else "false"
         if col == "valid":
             _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-            is_valid = bool(pr.reviewers) and ua == 0 and bool(_YT_RE.match(pr.title))
+            m = _YT_RE.match(pr.title)
+            yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
+            is_valid = bool(pr.reviewers) and ua == 0 and m is not None and yt_state == "Review"
             return "true" if is_valid else "false"
         if col == "youtrack-ticket":
             m = _YT_RE.match(pr.title)
@@ -259,7 +263,7 @@ def _report_data_lines(
         all_prs = [pr for pr in all_prs
                    if all(_pr_passes_filter(pr, fc, fv, neg) for fc, fv, neg in pr_filters)]
 
-    if "youtrack-state" in spec.all_cols and config.youtrack_url and config.youtrack_token:
+    if spec.all_cols & {"youtrack-state", "valid"} and config.youtrack_url and config.youtrack_token:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
             youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
