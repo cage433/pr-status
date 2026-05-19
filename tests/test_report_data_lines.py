@@ -857,6 +857,50 @@ class TestYIColumn(unittest.TestCase):
         self.assertIn("2", rows[0][0])
 
 
+class TestReviewOutstandingColumn(unittest.TestCase):
+
+    def test_lists_reviewers_with_no_state(self):
+        pr = make_pr(1, reviewers=["alice", "bob"])
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "alice, bob")
+
+    def test_excludes_approved_reviewers(self):
+        pr = make_pr(1, reviewers=["alice", "bob"],
+                     reviewer_states={"alice": "APPROVED"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "bob")
+
+    def test_excludes_changes_requested_reviewers(self):
+        pr = make_pr(1, reviewers=["alice", "bob"],
+                     reviewer_states={"alice": "CHANGES_REQUESTED"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "bob")
+
+    def test_includes_commented_reviewers(self):
+        pr = make_pr(1, reviewers=["alice"],
+                     reviewer_states={"alice": "COMMENTED"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "alice")
+
+    def test_empty_when_all_reviewed(self):
+        pr = make_pr(1, reviewers=["alice", "bob"],
+                     reviewer_states={"alice": "APPROVED", "bob": "CHANGES_REQUESTED"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "")
+
+    def test_alias_ro_resolves(self):
+        pr = make_pr(1, reviewers=["alice"])
+        rows_alias = run("pr,ro",               data=make_data(prs=[pr]))
+        rows_full  = run("pr,review-outstanding", data=make_data(prs=[pr]))
+        self.assertEqual(rows_alias, rows_full)
+
+    def test_sort_by_review_outstanding(self):
+        pr1 = make_pr(1, reviewers=["zara"])
+        pr2 = make_pr(2, reviewers=["alice"])
+        rows = run("pr,ro", sort="ro", data=make_data(prs=[pr1, pr2]))
+        self.assertIn("2", rows[0][0])  # alice sorts before zara
+
+
 class TestValidColumn(unittest.TestCase):
 
     _YT_STATES = {"PROJ-1": "Review"}

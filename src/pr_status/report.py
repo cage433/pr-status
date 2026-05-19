@@ -141,6 +141,10 @@ def _report_data_lines(
                     key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
                 elif col == "draft":
                     key.append(k(pr.isDraft))
+                elif col == "review-outstanding":
+                    outstanding = [config.author_name(r) for r in pr.reviewers
+                                   if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
+                    key.append(k(", ".join(outstanding).lower()))
                 elif col == "valid":
                     _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
                     m = _YT_RE.match(pr.title)
@@ -215,6 +219,10 @@ def _report_data_lines(
             return str(val) if val else ""
         if col == "draft":
             return "true" if pr.isDraft else "false"
+        if col == "review-outstanding":
+            outstanding = [config.author_name(r) for r in pr.reviewers
+                           if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
+            return ", ".join(outstanding)
         if col == "valid":
             _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
             m = _YT_RE.match(pr.title)
