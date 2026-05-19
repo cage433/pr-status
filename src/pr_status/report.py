@@ -141,6 +141,10 @@ def _report_data_lines(
                     key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
                 elif col == "draft":
                     key.append(k(pr.isDraft))
+                elif col == "valid":
+                    _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
+                    is_valid = bool(pr.reviewers) and ua == 0 and bool(_YT_RE.match(pr.title))
+                    key.append(k(is_valid))
                 elif col == "youtrack-ticket":
                     m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) + '-' + m.group(2) if m else "MISSING"))
@@ -209,6 +213,10 @@ def _report_data_lines(
             return str(val) if val else ""
         if col == "draft":
             return "true" if pr.isDraft else "false"
+        if col == "valid":
+            _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
+            is_valid = bool(pr.reviewers) and ua == 0 and bool(_YT_RE.match(pr.title))
+            return "true" if is_valid else "false"
         if col == "youtrack-ticket":
             m = _YT_RE.match(pr.title)
             return m.group(1) + '-' + m.group(2) if m else "MISSING"

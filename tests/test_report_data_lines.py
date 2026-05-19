@@ -854,5 +854,57 @@ class TestYIColumn(unittest.TestCase):
         self.assertIn("2", rows[0][0])
 
 
+class TestValidColumn(unittest.TestCase):
+
+    def _pr_with_ticket(self, number: int, reviewers: list[str] | None = None) -> GithubPR:
+        return make_pr(number, title="PROJ-1 some feature", reviewers=reviewers or ["bob"])
+
+    def test_valid_true_when_all_conditions_met(self):
+        pr = self._pr_with_ticket(1)
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 1, 0)})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "true")
+
+    def test_valid_false_when_no_reviewers(self):
+        pr = make_pr(1, title="PROJ-1 feature", reviewers=[])
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
+    def test_valid_false_when_unresolved_ai_comments(self):
+        pr = self._pr_with_ticket(1)
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
+    def test_valid_false_when_no_youtrack_ticket(self):
+        pr = make_pr(1, title="no ticket here", reviewers=["bob"])
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
+    def test_valid_filter_shows_only_valid(self):
+        valid_pr = self._pr_with_ticket(1)
+        invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
+        data = make_data(prs=[valid_pr, invalid_pr])
+        rows = run("pr,v", filters=["v=true"], data=data)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("1", rows[0][0])
+
+    def test_valid_sort_invalid_first(self):
+        valid_pr = self._pr_with_ticket(1)
+        invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
+        data = make_data(prs=[valid_pr, invalid_pr])
+        rows = run("pr,v", sort="v", data=data)
+        self.assertIn("2", rows[0][0])  # invalid (false) sorts before valid (true)
+
+    def test_valid_alias_v_resolves(self):
+        pr = self._pr_with_ticket(1)
+        data = make_data(prs=[pr])
+        rows_via_alias = run("pr,v", data=data)
+        rows_via_name  = run("pr,valid", data=data)
+        self.assertEqual(rows_via_alias, rows_via_name)
+
+
 if __name__ == "__main__":
     unittest.main()
