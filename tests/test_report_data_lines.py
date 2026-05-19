@@ -900,6 +900,31 @@ class TestReviewOutstandingColumn(unittest.TestCase):
         rows = run("pr,ro", sort="ro", data=make_data(prs=[pr1, pr2]))
         self.assertIn("2", rows[0][0])  # alice sorts before zara
 
+    def test_filter_ro_matches_when_user_is_one_of_several_outstanding(self):
+        pr = make_pr(1, reviewers=["bob", "carol"])
+        rows = run("pr", filters=["ro=bob"], data=make_data(prs=[pr]))
+        self.assertEqual(len(rows), 1)
+
+    def test_filter_ro_no_match_when_user_not_outstanding(self):
+        pr = make_pr(1, reviewers=["bob", "carol"],
+                     reviewer_states={"bob": "APPROVED"})
+        rows = run("pr", filters=["ro=bob"], data=make_data(prs=[pr]))
+        self.assertEqual(rows, [])
+
+    def test_filter_ro_not_equal_excludes_when_user_outstanding(self):
+        pr1 = make_pr(1, reviewers=["bob"])
+        pr2 = make_pr(2, reviewers=["carol"])
+        rows = run("pr", filters=["ro!=bob"], data=make_data(prs=[pr1, pr2]))
+        self.assertEqual(len(rows), 1)
+        self.assertIn("2", rows[0][0])
+
+    def test_filter_ro_none_matches_when_no_outstanding(self):
+        pr1 = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"})
+        pr2 = make_pr(2, reviewers=["carol"])
+        rows = run("pr", filters=["ro=none"], data=make_data(prs=[pr1, pr2]))
+        self.assertEqual(len(rows), 1)
+        self.assertIn("1", rows[0][0])
+
 
 class TestValidColumn(unittest.TestCase):
 

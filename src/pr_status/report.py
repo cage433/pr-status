@@ -256,6 +256,11 @@ def _report_data_lines(
             reviewer_names = {config.author_name(r) for r in pr.reviewers}
             matched = (not pr.reviewers and "none" in fv) or bool(reviewer_names & fv)
             return not matched if neg else matched
+        if isinstance(fc, PlainColumn) and fc.name == "review-outstanding":
+            outstanding = {config.author_name(r) for r in pr.reviewers
+                           if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")}
+            matched = (not outstanding and "none" in fv) or bool(outstanding & fv)
+            return not matched if neg else matched
         val = _filter_val(fc, pr)
         return (val not in fv) if neg else (val in fv)
 
