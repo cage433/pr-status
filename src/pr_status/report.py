@@ -259,14 +259,14 @@ def _report_data_lines(
     pr_filters      = [(fc, fv, neg) for fc, fv, neg in filters if not _uses_comment_time(fc)]
     comment_filters = [(fc, fv, neg) for fc, fv, neg in filters if     _uses_comment_time(fc)]
 
-    if pr_filters:
-        all_prs = [pr for pr in all_prs
-                   if all(_pr_passes_filter(pr, fc, fv, neg) for fc, fv, neg in pr_filters)]
-
     if spec.all_cols & {"youtrack-state", "valid"} and config.youtrack_url and config.youtrack_token:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
             youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
+
+    if pr_filters:
+        all_prs = [pr for pr in all_prs
+                   if all(_pr_passes_filter(pr, fc, fv, neg) for fc, fv, neg in pr_filters)]
 
     _COMMENT_NAMES = frozenset({"comment", "comment-time", "comment-author"})
     _comment_in_cols = any(isinstance(c, PlainColumn) and c.name in _COMMENT_NAMES for c in cols)
