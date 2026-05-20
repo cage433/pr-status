@@ -149,7 +149,8 @@ def _report_data_lines(
                     _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
                     m = _YT_RE.match(pr.title)
                     yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
-                    is_valid = bool(pr.reviewers) and ua == 0 and m is not None and yt_state == "Review"
+                    all_approved = bool(pr.reviewers) and all(pr.reviewer_states.get(r, "") == "APPROVED" for r in pr.reviewers)
+                    is_valid = bool(pr.reviewers) and (ua == 0 or all_approved) and m is not None and yt_state == "Review"
                     key.append(k(is_valid))
                 elif col == "youtrack-ticket":
                     m = _YT_RE.match(pr.title)
@@ -227,7 +228,8 @@ def _report_data_lines(
             _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
             m = _YT_RE.match(pr.title)
             yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
-            is_valid = bool(pr.reviewers) and ua == 0 and m is not None and yt_state == "Review"
+            all_approved = bool(pr.reviewers) and all(pr.reviewer_states.get(r, "") == "APPROVED" for r in pr.reviewers)
+            is_valid = bool(pr.reviewers) and (ua == 0 or all_approved) and m is not None and yt_state == "Review"
             return "true" if is_valid else "false"
         if col == "youtrack-ticket":
             m = _YT_RE.match(pr.title)

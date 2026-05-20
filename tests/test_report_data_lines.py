@@ -947,8 +947,24 @@ class TestValidColumn(unittest.TestCase):
         rows = run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
-    def test_valid_false_when_unresolved_ai_comments(self):
-        pr = self._pr_with_ticket(1)
+    def test_valid_false_when_unresolved_ai_comments_and_reviewer_not_approved(self):
+        pr = self._pr_with_ticket(1)  # reviewer "bob" has no state (not approved)
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)},
+                         youtrack_states=self._YT_STATES)
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
+    def test_valid_true_when_ai_comments_but_all_reviewers_approved(self):
+        pr = make_pr(1, title="PROJ-1 some feature", reviewers=["bob"],
+                     reviewer_states={"bob": "APPROVED"})
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)},
+                         youtrack_states=self._YT_STATES)
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "true")
+
+    def test_valid_false_when_ai_comments_and_not_all_reviewers_approved(self):
+        pr = make_pr(1, title="PROJ-1 some feature", reviewers=["bob", "carol"],
+                     reviewer_states={"bob": "APPROVED"})
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)},
                          youtrack_states=self._YT_STATES)
         rows = run("pr,v", data=data)
