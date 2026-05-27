@@ -156,6 +156,33 @@ class _Rev:
     def __eq__(self, o: object):    return isinstance(o, _Rev) and self.val == o.val
 
 
+def _build_developer_map(full_names: set[str], short_names: dict[str, str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    first_name_used: dict[str, str] = {}
+    conflicts: set[str] = set()
+    for full in sorted(full_names):
+        if full in short_names:
+            result[full] = short_names[full]
+        else:
+            first = full.split()[0] if full.split() else full
+            if first in first_name_used:
+                conflicts.add(first)
+            first_name_used[first] = full
+            result[full] = first
+    if conflicts:
+        details = "; ".join(
+            "%r used by %s" % (f, " and ".join(
+                repr(n) for n in sorted(full_names)
+                if n.split()[0] == f and n not in short_names
+            ))
+            for f in sorted(conflicts)
+        )
+        raise _TimelyError(
+            "Ambiguous first names — add timely-short-names entries: %s" % details
+        )
+    return result
+
+
 def _reaggregate(rows: list[TimelyRow], col_names: list[str]) -> list[TimelyRow]:
     group_cols = [c for c in col_names if c != "hours"]
     totals: dict[tuple, float] = defaultdict(float)
@@ -230,6 +257,14 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
         events = [e for e in events
                   if (e.get("project") or {}).get("name", "").lower() not in config.timely_ignored_projects]
     rows = _events_to_rows(events)
+
+    # Apply developer and project short names
+    dev_map = _build_developer_map({r.developer for r in rows}, config.timely_short_names)
+    rows = [TimelyRow(
+        developer=dev_map[r.developer],
+        project=config.timely_short_projects.get(r.project, r.project),
+        title=r.title, hours=r.hours, month=r.month,
+    ) for r in rows]
 
     # Apply filters
     for col, vals, neg in row_filters:

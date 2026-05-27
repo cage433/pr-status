@@ -30,6 +30,8 @@ class Config:
     timely_access_token: str = ""
     timely_account_id: str = ""
     timely_ignored_projects: set[str] = field(default_factory=set)
+    timely_short_names: dict[str, str] = field(default_factory=dict)
+    timely_short_projects: dict[str, str] = field(default_factory=dict)
 
     def author_name(self, author: str) -> str:
         return self.author_names.get(author, author)
@@ -55,6 +57,8 @@ class Config:
         timely_access_token = ""
         timely_account_id = ""
         timely_ignored_projects: set[str] = set()
+        timely_short_names: dict[str, str] = {}
+        timely_short_projects: dict[str, str] = {}
 
         if config_file and os.path.isfile(config_file):
             with open(config_file) as f:
@@ -153,6 +157,22 @@ class Config:
                             p = p.strip().lower()
                             if p: timely_ignored_projects.add(p)
                         continue
+                    m = re.match(r'^timely-short-names:\s*(.*)', line)
+                    if m:
+                        for mapping in m.group(1).split(","):
+                            mapping = mapping.strip()
+                            if "=" in mapping:
+                                full, short = mapping.split("=", 1)
+                                timely_short_names[full.strip()] = short.strip()
+                        continue
+                    m = re.match(r'^timely-short-projects:\s*(.*)', line)
+                    if m:
+                        for mapping in m.group(1).split(","):
+                            mapping = mapping.strip()
+                            if "=" in mapping:
+                                full, short = mapping.split("=", 1)
+                                timely_short_projects[full.strip()] = short.strip()
+                        continue
 
         return Config(
             repo=GithubInfo(owner=owner, repo_name=repo_name),
@@ -169,4 +189,6 @@ class Config:
             timely_access_token=timely_access_token,
             timely_account_id=timely_account_id,
             timely_ignored_projects=timely_ignored_projects,
+            timely_short_names=timely_short_names,
+            timely_short_projects=timely_short_projects,
         )
