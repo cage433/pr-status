@@ -156,6 +156,25 @@ class _Rev:
     def __eq__(self, o: object):    return isinstance(o, _Rev) and self.val == o.val
 
 
+def _reaggregate(rows: list[TimelyRow], col_names: list[str]) -> list[TimelyRow]:
+    group_cols = [c for c in col_names if c != "hours"]
+    totals: dict[tuple, float] = defaultdict(float)
+    for row in rows:
+        key = tuple(_cell(c, row) for c in group_cols)
+        totals[key] += row.hours
+    result = []
+    for key, hours in totals.items():
+        vals = dict(zip(group_cols, key))
+        result.append(TimelyRow(
+            developer=vals.get("developer", ""),
+            project=vals.get("project", ""),
+            title=vals.get("title", ""),
+            hours=hours,
+            month=vals.get("month", ""),
+        ))
+    return result
+
+
 def run_timely_report(config: Config, args: TimelyReportArgs) -> None:
     try:
         _run(config, args)
@@ -212,6 +231,9 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
     # Apply filters
     for col, vals, neg in row_filters:
         rows = [r for r in rows if (_cell(col, r) in vals) != neg]
+
+    # Re-aggregate: group by displayed non-hours columns and sum hours
+    rows = _reaggregate(rows, col_names)
 
     # Sort
     if args.sort:
