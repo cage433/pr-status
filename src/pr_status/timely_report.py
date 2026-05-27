@@ -16,7 +16,7 @@ COL_ALIASES = {
     "p": "project",
     "t": "title",
     "h": "hours",
-    "w": "workdays",
+    "w": "workdays", "wd": "workdays",
     "m": "month",
     "y": "day",
     "yt": "youtrack-ticket", "yp": "youtrack-project", "yi": "youtrack-id",
