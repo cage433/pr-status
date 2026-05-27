@@ -6,7 +6,8 @@ Options:
   -h            Show this help message
 
 Commands:
-  r, report [cols] [options]   Output a report
+  r, report [cols] [options]   Output a PR report
+  t, timely [cols] [options]   Output a Timely time-tracking report
   m, mark PR                   Record current time for PR
                                 - Comments earlier than the mark will be ignored
   unmark PR                    Remove mark for PR

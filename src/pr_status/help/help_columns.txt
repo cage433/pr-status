@@ -35,3 +35,31 @@ Long names:
 
   Append _ to a column name to display its full name as the header instead
   of the short abbreviation, e.g. 'nc_' shows 'NUM-COMMENTS'.
+
+─────────────────────────────────────────────────────────────────────────────
+Timely Report Columns (t / timely command):
+
+  Default columns: developer, project, title, hours, month
+
+  Name        Alias   Notes
+  ------      -----   -----
+  developer   D, DEV  Person who logged the time
+  project     P       Timely project name
+  title       T       Log entry description
+  hours       H       Hours logged (summed across matching entries)
+  month       M       Month of the entry, e.g. Mar-26
+
+  Names and aliases are case-insensitive. Unambiguous prefixes also work
+  (e.g. 'dev' for 'developer', 'pro' for 'project').
+
+  When columns are omitted, rows with identical values across all displayed
+  columns are merged and their hours summed. For example:
+    t developer,project,hours   shows one row per developer+project
+
+Month filter:
+
+  --filter month=mar-26         Only March 2026
+  --filter month=mar            Most recent March
+  --filter month=3              Last 3 calendar months (default if no month filter)
+
+  Projects listed in timely-ignore-project: in the config are always excluded.

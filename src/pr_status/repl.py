@@ -108,7 +108,7 @@ def run_repl(
                 focused_pr = None
                 print("Unfocused.")
 
-            elif cmd in ("timely",):
+            elif cmd in ("timely", "t"):
                 if (timely_args := TimelyReportArgs.parse(arg)) is not None:
                     run_timely_report(config, timely_args)
 
@@ -131,7 +131,7 @@ def run_repl(
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, timely, mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Use: report, timely (t), mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()
