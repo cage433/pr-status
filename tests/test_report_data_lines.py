@@ -50,11 +50,12 @@ def make_pr(
     is_draft: bool = False,
     reviewers: list[str] | None = None,
     reviewer_states: dict[str, str] | None = None,
+    labels: set[str] | None = None,
 ) -> GithubPR:
     return GithubPR(
         number=PRNumber(number), title=title, isDraft=is_draft,
         createdAt=created_at, author=author, reviewers=reviewers or [],
-        reviewer_states=reviewer_states or {},
+        reviewer_states=reviewer_states or {}, labels=labels or set(),
     )
 
 
@@ -974,6 +975,18 @@ class TestValidColumn(unittest.TestCase):
     def test_valid_false_when_no_youtrack_ticket(self):
         pr = make_pr(1, title="no ticket here", reviewers=["bob"])
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
+    def test_valid_true_when_documentation_label_and_no_ticket(self):
+        pr = make_pr(1, title="fix some docs", reviewers=["bob"], labels={"documentation"})
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "true")
+
+    def test_valid_false_when_documentation_label_but_ticket_state_wrong(self):
+        pr = make_pr(1, title="PROJ-1 fix some docs", reviewers=["bob"], labels={"documentation"})
+        data = make_data(prs=[pr], youtrack_states={"PROJ-1": "In Progress"})
         rows = run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 

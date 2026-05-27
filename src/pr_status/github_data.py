@@ -42,6 +42,7 @@ class GithubPR:
     author: str  # login name; empty string if the account has been deleted
     reviewers: list[str]
     reviewer_states: dict[str, str]  # login → latest review state (APPROVED, CHANGES_REQUESTED, …)
+    labels: set[str] = field(default_factory=set)
 
     @staticmethod
     def from_graph_ql(nodes: list[Node], config: "Config", args: "ReportArgs") -> list["GithubPR"]:
@@ -76,6 +77,7 @@ class GithubPR:
             title = node["title"]
             if any(p.search(title) for p in config.ignored_title_patterns):
                 continue
+            labels = {lbl["name"] for lbl in (node.get("labels") or {}).get("nodes", [])}
             result.append(GithubPR(
                 number=PRNumber(node["number"]),
                 title=title,
@@ -84,6 +86,7 @@ class GithubPR:
                 author=pr_author,
                 reviewers=reviewers,
                 reviewer_states=reviewer_states,
+                labels=labels,
             ))
         return result
 
