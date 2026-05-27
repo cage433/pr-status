@@ -48,7 +48,7 @@ Timely Report Columns (t / timely command):
   project           P       Timely project name
   title             T       Log entry description (truncated to 50 chars)
   hours             H       Hours logged (summed across matching entries)
-  workdays          W       Hours divided by 8
+  workdays          W, WD   Hours divided by 8
   month             M       Month of the entry, e.g. Mar-26
   day               Y       Date of the entry, e.g. 2026-03-15
   youtrack-ticket   YT      YouTrack ticket ID extracted from title (e.g. PROJ-123); MISSING if absent
