@@ -20,6 +20,7 @@ def make_config(**kwargs) -> Config:
         author_names={},
         ignored_comment_patterns=[],
         ignored_title_patterns=[],
+        ignored_labels=set(),
         aliases={},
     )
     defaults.update(kwargs)

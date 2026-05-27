@@ -12,6 +12,10 @@ def node_login(node: Node) -> str:
     return (node.get("author") or {}).get("login", "")
 
 
+def node_label_names(node: Node) -> set[str]:
+    return {lbl["name"] for lbl in (node.get("labels") or {}).get("nodes", [])}
+
+
 @dataclass
 class GithubRawData:
     pr_nodes: list[Node]
@@ -62,7 +66,8 @@ class GithubRawData:
         pr_nodes = gh_api.fetch_pr_nodes(config.repo)
         pr_nodes = [n for n in pr_nodes
                     if node_login(n) not in config.ignored_authors
-                    and n["number"] not in config.ignored_prs]
+                    and n["number"] not in config.ignored_prs
+                    and not (node_label_names(n) & config.ignored_labels)]
         pr_nums = [PRNumber(n["number"]) for n in pr_nodes]
 
         loc_results: dict[PRNumber, LOC] = {}

@@ -37,6 +37,9 @@ query($owner: String!, $repo: String!, $cursor: String) {
             state
           }
         }
+        labels(first: 20) {
+          nodes { name }
+        }
       }
     }
   }

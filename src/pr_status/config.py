@@ -21,6 +21,7 @@ class Config:
     author_names: dict[str, str]
     ignored_comment_patterns: list[re.Pattern]
     ignored_title_patterns: list[re.Pattern]
+    ignored_labels: set[str]
     aliases: dict[str, str]
     max_threads: int = 50
     config_file: str = ""
@@ -43,6 +44,7 @@ class Config:
         author_names: dict[str, str] = {}
         ignored_comment_patterns: list[re.Pattern] = []
         ignored_title_patterns: list[re.Pattern] = []
+        ignored_labels: set[str] = set()
         aliases: dict[str, str] = {}
         max_threads = 50
         youtrack_url = ""
@@ -74,6 +76,12 @@ class Config:
                                 if p: ignored_prs.add(PRNumber(int(p)))
                             except ValueError:
                                 pass
+                        continue
+                    m = re.match(r'^ignore-label:\s*(.*)', line)
+                    if m:
+                        for lb in m.group(1).split(","):
+                            lb = lb.strip()
+                            if lb: ignored_labels.add(lb)
                         continue
                     m = re.match(r'^ai-author:\s*(.*)', line)
                     if m:
@@ -134,6 +142,7 @@ class Config:
             ai_authors=ai_authors, author_names=author_names,
             ignored_comment_patterns=ignored_comment_patterns,
             ignored_title_patterns=ignored_title_patterns,
+            ignored_labels=ignored_labels,
             aliases=aliases,
             max_threads=max_threads,
             config_file=config_file,
