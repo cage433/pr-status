@@ -134,17 +134,24 @@ def run_repl(
                     if "--all" in tokens:
                         since = CACHE_START
                     else:
-                        month_tok = next((t for t in tokens if t.startswith("--month=")), None)
-                        num_days_tok = next((t for t in tokens if t.startswith("--num-days=")), None)
-                        if month_tok:
+                        def _flag_val(flag: str) -> str | None:
+                            for i, t in enumerate(tokens):
+                                if t == flag and i + 1 < len(tokens):
+                                    return tokens[i + 1]
+                                if t.startswith(flag + "="):
+                                    return t.split("=", 1)[1]
+                            return None
+                        month_val    = _flag_val("--month")
+                        num_days_val = _flag_val("--num-days")
+                        if month_val is not None:
                             try:
-                                since, upto = parse_month_spec(month_tok.split("=", 1)[1], today)
+                                since, upto = parse_month_spec(month_val, today)
                             except Exception as e:
                                 print("Error: %s" % e, file=sys.stderr)
                                 since = None
-                        elif num_days_tok:
+                        elif num_days_val is not None:
                             try:
-                                num_days = int(num_days_tok.split("=", 1)[1])
+                                num_days = int(num_days_val)
                                 since = today - timedelta(days=num_days - 1)
                             except ValueError:
                                 since = today - timedelta(days=6)
