@@ -171,7 +171,7 @@ def _report_data_lines(
                 elif col == "workdays":
                     m = _YT_RE.match(pr.title)
                     if m:
-                        tid = m.group(1) + "-" + m.group(2)
+                        tid = (m.group(1) + "-" + m.group(2)).upper()
                         tid = config.timely_yt_map.get(tid, tid)
                         wd = yt_workdays.get(tid)
                     else:
@@ -263,7 +263,7 @@ def _report_data_lines(
             m = _YT_RE.match(pr.title)
             if not m:
                 return ""
-            tid = m.group(1) + "-" + m.group(2)
+            tid = (m.group(1) + "-" + m.group(2)).upper()
             tid = config.timely_yt_map.get(tid, tid)
             wd = yt_workdays.get(tid)
             return "" if wd is None else "%.1f" % wd

@@ -143,5 +143,5 @@ def load_yt_workdays() -> dict[str, float]:
                 for row in csv.DictReader(f):
                     m = _YT_RE.match(row.get("note", ""))
                     if m:
-                        totals[m.group(1) + "-" + m.group(2)] += float(row.get("hours", 0) or 0)
+                        totals[(m.group(1) + "-" + m.group(2)).upper()] += float(row.get("hours", 0) or 0)
     return {k: v / 8 for k, v in totals.items()}
