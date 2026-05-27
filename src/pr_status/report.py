@@ -352,23 +352,25 @@ def _render_report(
     cols = spec.cols
     rows = _report_data_lines(config, marks, args, spec, data)
 
-    # Aggregate: group by non-numeric columns, sum numeric columns
+    # Aggregate: group by non-numeric columns, sum numeric columns.
+    # None means no non-blank value seen yet (displays as blank).
     numeric_idx = [i for i, c in enumerate(cols) if col_is_numeric(c)]
     if numeric_idx:
         group_idx = [i for i in range(len(cols)) if i not in set(numeric_idx)]
-        grouped: dict[tuple, list[float]] = {}
+        grouped: dict[tuple, list[float | None]] = {}
         order: list[tuple] = []
         display: dict[tuple, list[str]] = {}
         for row in rows:
             key = tuple(_ANSI_RE.sub('', row[i]) for i in group_idx)
             if key not in grouped:
-                grouped[key] = [0.0] * len(numeric_idx)
+                grouped[key] = [None] * len(numeric_idx)
                 order.append(key)
                 display[key] = [row[i] for i in group_idx]
             for j, ni in enumerate(numeric_idx):
                 v = _ANSI_RE.sub('', row[ni]).strip()
                 try:
-                    grouped[key][j] += float(v)
+                    fv = float(v)
+                    grouped[key][j] = (grouped[key][j] or 0.0) + fv
                 except ValueError:
                     pass
         rows = []
@@ -378,8 +380,9 @@ def _render_report(
                 new_row[gi] = display[key][k]
             for j, ni in enumerate(numeric_idx):
                 t = grouped[key][j]
-                c = cols[ni]
-                new_row[ni] = ("%.1f" % t) if isinstance(c, PlainColumn) and c.name == "workdays" else str(int(t))
+                if t is not None:
+                    c = cols[ni]
+                    new_row[ni] = ("%.1f" % t) if isinstance(c, PlainColumn) and c.name == "workdays" else str(int(t))
             rows.append(new_row)
 
     hdr_lines = [col_header_lines(c) for c in cols]
@@ -417,13 +420,13 @@ def _render_report(
     if numeric_idx and rows:
         totals: list[str] = [""] * len(cols)
         for i in numeric_idx:
-            total = sum(
-                float(_ANSI_RE.sub('', row[i]).strip())
-                for row in rows
-                if _ANSI_RE.sub('', row[i]).strip()
-                if _ANSI_RE.sub('', row[i]).strip().replace('.', '', 1).lstrip('-').isdigit()
-            )
-            c = cols[i]
-            totals[i] = ("%.1f" % total) if isinstance(c, PlainColumn) and c.name == "workdays" else str(int(total))
+            total: float | None = None
+            for row in rows:
+                v = _ANSI_RE.sub('', row[i]).strip()
+                if v and v.replace('.', '', 1).lstrip('-').isdigit():
+                    total = (total or 0.0) + float(v)
+            if total is not None:
+                c = cols[i]
+                totals[i] = ("%.1f" % total) if isinstance(c, PlainColumn) and c.name == "workdays" else str(int(total))
         print(fmt_row(["-" * widths[i] for i in range(len(cols))]))
         print(fmt_row(totals))
