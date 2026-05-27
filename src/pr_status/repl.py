@@ -114,11 +114,18 @@ def run_repl(
             elif cmd in ("help", "h"):
                 show_help(script_name, config.config_file or DEFAULT_CONFIG, arg)
 
+            elif cmd in ("alias", "aliases"):
+                if config.aliases:
+                    for name, expansion in sorted(config.aliases.items()):
+                        print("  %s -> %s" % (name, expansion))
+                else:
+                    print("No aliases configured.")
+
             elif cmd in ("quit", "exit"):
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, mark, unmark, focus, unfocus, reload, help, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Use: report, mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()
