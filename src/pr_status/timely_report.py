@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from .config import Config
-from .timely_cache import fetch_events_from_cache
+from .timely_cache import CACHE_START, fetch_events_from_cache
 from .timely_report_args import TimelyReportArgs
 
 
@@ -339,12 +339,7 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
 
 
 def _default_range(today: date) -> tuple[date, date]:
-    month = today.month - 2
-    year = today.year
-    while month <= 0:
-        month += 12
-        year -= 1
-    return date(year, month, 1), today + timedelta(days=1)
+    return CACHE_START, today + timedelta(days=1)
 
 
 def _events_to_rows(events: list[dict]) -> list[TimelyRow]:
