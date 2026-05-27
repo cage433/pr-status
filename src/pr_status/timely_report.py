@@ -128,7 +128,7 @@ def _cell(col: str, row: TimelyRow) -> str:
     if col == "project":   return row.project
     if col == "title":     return row.title[:50]
     if col == "hours":     return "%.1f" % row.hours
-    if col == "workdays":  return "%.2f" % (row.hours / 8)
+    if col == "workdays":  return "%.1f" % (row.hours / 8)
     if col == "month":     return row.month
     if col == "day":       return row.day
     m = _YT_RE.match(row.title)
