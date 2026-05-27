@@ -383,3 +383,18 @@ def _render_report(
     print(fmt_row(["-" * widths[i] for i in range(len(cols))]))
     for row in rows:
         print(fmt_row(row) + _ROW_RESET)
+
+    numeric_indices = [i for i, c in enumerate(cols) if col_is_numeric(c)]
+    if numeric_indices and rows:
+        totals: list[str] = [""] * len(cols)
+        for i in numeric_indices:
+            total = sum(
+                float(_ANSI_RE.sub('', row[i]).strip())
+                for row in rows
+                if _ANSI_RE.sub('', row[i]).strip()
+                if _ANSI_RE.sub('', row[i]).strip().replace('.', '', 1).lstrip('-').isdigit()
+            )
+            c = cols[i]
+            totals[i] = ("%.1f" % total) if isinstance(c, PlainColumn) and c.name == "workdays" else str(int(total))
+        print(fmt_row(["-" * widths[i] for i in range(len(cols))]))
+        print(fmt_row(totals))
