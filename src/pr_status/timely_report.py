@@ -77,7 +77,7 @@ def _parse_month_spec(s: str, today: date) -> tuple[date, date]:
     s = s.strip().lower()
     if s.isdigit():
         n = int(s)
-        month = today.month - n
+        month = today.month - (n - 1)
         year = today.year
         while month <= 0:
             month += 12
@@ -343,7 +343,7 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
 
 
 def _default_range(today: date) -> tuple[date, date]:
-    month = today.month - 3
+    month = today.month - 2
     year = today.year
     while month <= 0:
         month += 12

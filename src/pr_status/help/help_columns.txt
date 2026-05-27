@@ -65,6 +65,7 @@ Month filter:
 
   --filter month=mar-26         Only March 2026
   --filter month=mar            Most recent March
-  --filter month=3              Last 3 calendar months (default if no month filter)
+  --filter month=1              Current month only
+  --filter month=3              Current month plus 2 previous (default if no month filter)
 
   Projects listed in timely-ignore-project: in the config are always excluded.
