@@ -8,6 +8,7 @@ Options:
 Commands:
   r, report [cols] [options]   Output a PR report
   t, timely [cols] [options]   Output a Timely time-tracking report
+  rtc [--num-days=N | --all]   Refresh Timely event cache (default: last 7 days)
   m, mark PR                   Record current time for PR
                                 - Comments earlier than the mark will be ignored
   unmark PR                    Remove mark for PR

@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+from datetime import date, timedelta
 
 from .config import Config
 from . import gh_api
@@ -9,6 +10,7 @@ from .marks import Marks
 from .pr_number import PRNumber
 from .report import run_report
 from .report_args import ReportArgs
+from .timely_cache import CACHE_START, ensure_cache_current, is_cache_current, refresh_range
 from .timely_report import run_timely_report
 from .timely_report_args import TimelyReportArgs
 
@@ -109,8 +111,36 @@ def run_repl(
                 print("Unfocused.")
 
             elif cmd in ("timely", "t"):
-                if (timely_args := TimelyReportArgs.parse(arg)) is not None:
-                    run_timely_report(config, timely_args)
+                if not config.timely_access_token or not config.timely_account_id:
+                    print("Error: timely-access-token and timely-account-id must be set in config.", file=sys.stderr)
+                else:
+                    if not is_cache_current():
+                        print("Updating cache…", flush=True)
+                        ensure_cache_current(config.timely_account_id, config.timely_access_token)
+                    if (timely_args := TimelyReportArgs.parse(arg)) is not None:
+                        run_timely_report(config, timely_args)
+
+            elif cmd in ("refresh-timely-cache", "rtc"):
+                if not config.timely_access_token or not config.timely_account_id:
+                    print("Error: timely-access-token and timely-account-id must be set in config.", file=sys.stderr)
+                else:
+                    today = date.today()
+                    tokens = arg.split()
+                    if "--all" in tokens:
+                        since = CACHE_START
+                    else:
+                        num_days = 7
+                        for tok in tokens:
+                            if tok.startswith("--num-days="):
+                                try:
+                                    num_days = int(tok.split("=", 1)[1])
+                                except ValueError:
+                                    pass
+                        since = today - timedelta(days=num_days - 1)
+                    print("Refreshing cache from %s to %s…" % (since, today))
+                    refresh_range(config.timely_account_id, config.timely_access_token,
+                                  since, today + timedelta(days=1))
+                    print("Done.")
 
             elif cmd in ("reload", "rl"):
                 config = Config.load(config_file)
@@ -131,7 +161,7 @@ def run_repl(
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, timely (t), mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Use: report, timely (t), rtc, mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()

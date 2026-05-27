@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from .config import Config
-from .timely import fetch_events
+from .timely_cache import fetch_events_from_cache
 from .timely_report_args import TimelyReportArgs
 
 
@@ -237,10 +237,6 @@ def run_timely_report(config: Config, args: TimelyReportArgs) -> None:
 
 
 def _run(config: Config, args: TimelyReportArgs) -> None:
-    if not config.timely_access_token or not config.timely_account_id:
-        print("Error: timely-access-token and timely-account-id must be set in config.", file=sys.stderr)
-        return
-
     today = date.today()
 
     # Parse columns
@@ -280,7 +276,7 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
             row_filters.append((col, vals, neg))
 
     # Fetch and aggregate
-    events = fetch_events(config.timely_account_id, config.timely_access_token, since, upto)
+    events = fetch_events_from_cache(since, upto)
     if config.timely_ignored_projects:
         events = [e for e in events
                   if (e.get("project") or {}).get("name", "").lower() not in config.timely_ignored_projects]
