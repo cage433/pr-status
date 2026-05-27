@@ -11,7 +11,7 @@ from .pr_number import PRNumber
 from .report import run_report
 from .report_args import ReportArgs
 from .timely_cache import CACHE_START, ensure_cache_current, is_cache_current, refresh_range
-from .timely_report import run_timely_report
+from .timely_report import parse_month_spec, run_timely_report
 from .timely_report_args import TimelyReportArgs
 
 DEFAULT_CONFIG = os.path.expanduser("~/.config/pr-status/config")
@@ -130,20 +130,30 @@ def run_repl(
                 else:
                     today = date.today()
                     tokens = arg.split()
+                    upto = today + timedelta(days=1)
                     if "--all" in tokens:
                         since = CACHE_START
                     else:
-                        num_days = 7
-                        for tok in tokens:
-                            if tok.startswith("--num-days="):
-                                try:
-                                    num_days = int(tok.split("=", 1)[1])
-                                except ValueError:
-                                    pass
-                        since = today - timedelta(days=num_days - 1)
-                    print("Refreshing cache from %s to %s…" % (since, today))
-                    refresh_range(config.timely_account_id, config.timely_access_token,
-                                  since, today + timedelta(days=1))
+                        month_tok = next((t for t in tokens if t.startswith("--month=")), None)
+                        num_days_tok = next((t for t in tokens if t.startswith("--num-days=")), None)
+                        if month_tok:
+                            try:
+                                since, upto = parse_month_spec(month_tok.split("=", 1)[1], today)
+                            except Exception as e:
+                                print("Error: %s" % e, file=sys.stderr)
+                                since = None
+                        elif num_days_tok:
+                            try:
+                                num_days = int(num_days_tok.split("=", 1)[1])
+                                since = today - timedelta(days=num_days - 1)
+                            except ValueError:
+                                since = today - timedelta(days=6)
+                        else:
+                            since = today - timedelta(days=6)
+                    if since is not None:
+                        print("Refreshing cache from %s to %s…" % (since, upto - timedelta(days=1)))
+                        refresh_range(config.timely_account_id, config.timely_access_token,
+                                      since, upto)
                     print("Done.")
 
             elif cmd in ("reload", "rl"):

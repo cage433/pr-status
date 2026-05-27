@@ -70,7 +70,7 @@ def _month_sort_key(month_str: str) -> tuple[int, int]:
         return (0, 0)
 
 
-def _parse_month_spec(s: str, today: date) -> tuple[date, date]:
+def parse_month_spec(s: str, today: date) -> tuple[date, date]:
     """Parse a month filter value into a (since, upto) date range.
 
     Accepts: integer n (last n calendar months), "mmm" (most recent named month),
@@ -266,7 +266,7 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
         if col == "month" and not neg:
             month_filter: set[str] = set()
             for v in vals:
-                s, u = _parse_month_spec(v, today)
+                s, u = parse_month_spec(v, today)
                 since = min(since, s)
                 upto = max(upto, u)
                 d = date(s.year, s.month, 1)
