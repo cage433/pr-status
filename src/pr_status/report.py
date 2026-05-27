@@ -74,6 +74,7 @@ def _report_data_lines(
     unresolved_counts = data.unresolved_counts
     last_activity     = data.last_activity
     youtrack_states   = data.youtrack_states
+    yt_workdays: dict[str, float] = load_yt_workdays() if "workdays" in spec.all_cols else {}
 
     def get_author(pr: GithubPR) -> str:
         return config.author_name(pr.author)
@@ -291,8 +292,6 @@ def _report_data_lines(
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
             youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
-
-    yt_workdays: dict[str, float] = load_yt_workdays() if "workdays" in spec.all_cols else {}
 
     if pr_filters:
         all_prs = [pr for pr in all_prs
