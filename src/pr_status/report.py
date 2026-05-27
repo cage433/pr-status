@@ -35,6 +35,7 @@ from .marks import Marks
 from .pr_number import PRNumber
 from .report_args import ReportArgs
 from . import youtrack
+from .timely_cache import load_yt_workdays
 from .report_spec import (
     ColSpec, PlainColumn, Comparison, _ListError,
     TIMESTAMP_COLS, col_header, col_header_lines, col_is_numeric, col_width,
@@ -166,6 +167,10 @@ def _report_data_lines(
                     m = _YT_RE.match(pr.title)
                     tid = m.group(1) + "-" + m.group(2) if m else None
                     key.append(k(youtrack_states.get(tid, "MISSING") if tid else "MISSING"))
+                elif col == "workdays":
+                    m = _YT_RE.match(pr.title)
+                    wd = yt_workdays.get(m.group(1) + "-" + m.group(2)) if m else None
+                    key.append(k(wd if wd is not None else float("inf")))
             return key
         all_prs.sort(key=sort_key)
 
@@ -248,6 +253,12 @@ def _report_data_lines(
                 return "MISSING"
             tid = m.group(1) + "-" + m.group(2)
             return youtrack_states.get(tid, "—")
+        if col == "workdays":
+            m = _YT_RE.match(pr.title)
+            if not m:
+                return ""
+            wd = yt_workdays.get(m.group(1) + "-" + m.group(2))
+            return "" if wd is None else "%.1f" % wd
         if col in ("comment", "comment-time", "comment-author"): return ""
         return ""
 
@@ -280,6 +291,8 @@ def _report_data_lines(
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
             youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
+
+    yt_workdays: dict[str, float] = load_yt_workdays() if "workdays" in spec.all_cols else {}
 
     if pr_filters:
         all_prs = [pr for pr in all_prs

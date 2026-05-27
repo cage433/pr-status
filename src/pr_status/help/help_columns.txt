@@ -27,6 +27,7 @@ Report Columns:
   youtrack-project      YP      YouTrack project name (e.g. PROJ); MISSING if absent
   youtrack-id           YI      YouTrack numeric ID (e.g. 123); MISSING if absent
   youtrack-state        YS      YouTrack ticket state (requires youtrack-url/token in config)
+  workdays              WD      Total workdays logged against the YT ticket in Timely (hours/8); blank if no YT ticket
 
   Names and aliases are case-insensitive. Unambiguous prefixes also work
   (e.g. 'cre' for 'creation-date').

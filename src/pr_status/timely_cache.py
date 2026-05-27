@@ -1,8 +1,12 @@
 import csv
 import os
+import re
+from collections import defaultdict
 from datetime import date, timedelta
 
 from .timely import fetch_events
+
+_YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
 
 CACHE_BASE  = os.path.expanduser("~/.cache/pr-status/timely")
 CACHE_START = date(2025, 1, 1)
@@ -121,3 +125,23 @@ def refresh_range(account_id: str, token: str, since: date, upto: date) -> None:
         print("  %s…" % d.strftime("%Y-%m"), flush=True)
         _fetch_and_cache_range(account_id, token, d, chunk_end)
         d = month_end
+
+
+def load_yt_workdays() -> dict[str, float]:
+    """Return total workdays (hours/8) per YT ticket ID across all cached data."""
+    totals: dict[str, float] = defaultdict(float)
+    if not os.path.isdir(CACHE_BASE):
+        return {}
+    for month_dir in sorted(os.listdir(CACHE_BASE)):
+        month_path = os.path.join(CACHE_BASE, month_dir)
+        if not os.path.isdir(month_path):
+            continue
+        for fname in os.listdir(month_path):
+            if not fname.endswith(".csv"):
+                continue
+            with open(os.path.join(month_path, fname), newline="") as f:
+                for row in csv.DictReader(f):
+                    m = _YT_RE.match(row.get("note", ""))
+                    if m:
+                        totals[m.group(1) + "-" + m.group(2)] += float(row.get("hours", 0) or 0)
+    return {k: v / 8 for k, v in totals.items()}

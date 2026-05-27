@@ -71,6 +71,10 @@ def run_repl(
                 arg        = (alias_arg + " " + arg).strip()
 
             if cmd in ("report", "r"):
+                if config.timely_access_token and config.timely_account_id:
+                    if not is_cache_current():
+                        print("Updating cache…", flush=True)
+                        ensure_cache_current(config.timely_account_id, config.timely_access_token)
                 focus_filter = "--filter PR=%d " % focused_pr if focused_pr else ""
                 if (report_args := ReportArgs.parse(focus_filter + arg)) is not None:
                     run_report(config, marks, report_args)
