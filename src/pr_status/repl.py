@@ -131,7 +131,13 @@ def run_repl(
                     today = date.today()
                     tokens = arg.split()
                     upto = today + timedelta(days=1)
-                    if "--all" in tokens:
+                    _KNOWN_RTC_FLAGS = {"--all", "--month", "--num-days"}
+                    unknown = [t for t in tokens if t.startswith("--")
+                               and t.split("=", 1)[0] not in _KNOWN_RTC_FLAGS]
+                    if unknown:
+                        print("Error: unknown rtc option(s): %s" % ", ".join(unknown), file=sys.stderr)
+                        since = None
+                    elif "--all" in tokens:
                         since = CACHE_START
                     else:
                         def _flag_val(flag: str) -> str | None:
