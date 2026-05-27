@@ -1,6 +1,6 @@
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .pr_number import PRNumber
 
@@ -27,6 +27,9 @@ class Config:
     config_file: str = ""
     youtrack_url: str = ""
     youtrack_token: str = ""
+    timely_access_token: str = ""
+    timely_account_id: str = ""
+    timely_ignored_projects: set[str] = field(default_factory=set)
 
     def author_name(self, author: str) -> str:
         return self.author_names.get(author, author)
@@ -49,6 +52,9 @@ class Config:
         max_threads = 50
         youtrack_url = ""
         youtrack_token = ""
+        timely_access_token = ""
+        timely_account_id = ""
+        timely_ignored_projects: set[str] = set()
 
         if config_file and os.path.isfile(config_file):
             with open(config_file) as f:
@@ -135,6 +141,18 @@ class Config:
                     m = re.match(r'^youtrack-token:\s*(.*)', line)
                     if m:
                         youtrack_token = m.group(1).strip(); continue
+                    m = re.match(r'^timely-access-token:\s*(.*)', line)
+                    if m:
+                        timely_access_token = m.group(1).strip(); continue
+                    m = re.match(r'^timely-account-id:\s*(.*)', line)
+                    if m:
+                        timely_account_id = m.group(1).strip(); continue
+                    m = re.match(r'^timely-ignore-project:\s*(.*)', line)
+                    if m:
+                        for p in m.group(1).split(","):
+                            p = p.strip().lower()
+                            if p: timely_ignored_projects.add(p)
+                        continue
 
         return Config(
             repo=GithubInfo(owner=owner, repo_name=repo_name),
@@ -148,4 +166,7 @@ class Config:
             config_file=config_file,
             youtrack_url=youtrack_url,
             youtrack_token=youtrack_token,
+            timely_access_token=timely_access_token,
+            timely_account_id=timely_account_id,
+            timely_ignored_projects=timely_ignored_projects,
         )

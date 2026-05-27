@@ -226,6 +226,9 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
 
     # Fetch and aggregate
     events = fetch_events(config.timely_account_id, config.timely_access_token, since, upto)
+    if config.timely_ignored_projects:
+        events = [e for e in events
+                  if (e.get("project") or {}).get("name", "").lower() not in config.timely_ignored_projects]
     rows = _events_to_rows(events)
 
     # Apply filters
