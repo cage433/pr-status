@@ -9,6 +9,8 @@ from .marks import Marks
 from .pr_number import PRNumber
 from .report import run_report
 from .report_args import ReportArgs
+from .timely_report import run_timely_report
+from .timely_report_args import TimelyReportArgs
 
 DEFAULT_CONFIG = os.path.expanduser("~/.config/pr-status/config")
 MARKS_FILE     = os.path.expanduser("~/.cache/pr-status/marks")
@@ -106,6 +108,10 @@ def run_repl(
                 focused_pr = None
                 print("Unfocused.")
 
+            elif cmd in ("timely",):
+                if (timely_args := TimelyReportArgs.parse(arg)) is not None:
+                    run_timely_report(config, timely_args)
+
             elif cmd in ("reload", "rl"):
                 config = Config.load(config_file)
                 config.repo.gh_user = gh_api.get_gh_user()
@@ -125,7 +131,7 @@ def run_repl(
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Use: report, timely, mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()
