@@ -9,26 +9,29 @@ from .timely import fetch_events
 from .timely_report_args import TimelyReportArgs
 
 
-KNOWN_COLS = ["developer", "project", "title", "hours", "month",
+KNOWN_COLS = ["developer", "project", "title", "hours", "workdays", "month", "day",
               "youtrack-ticket", "youtrack-project", "youtrack-id"]
 COL_ALIASES = {
     "dev": "developer", "d": "developer",
     "p": "project",
     "t": "title",
     "h": "hours",
+    "w": "workdays",
     "m": "month",
+    "y": "day",
     "yt": "youtrack-ticket", "yp": "youtrack-project", "yi": "youtrack-id",
 }
 COL_HEADERS = {
     "developer": "DEVELOPER", "project": "PROJECT", "title": "TITLE",
-    "hours": "HOURS", "month": "MONTH",
+    "hours": "HOURS", "workdays": "WD", "month": "MONTH", "day": "DAY",
     "youtrack-ticket": "YT", "youtrack-project": "YP", "youtrack-id": "YI",
 }
 COL_WIDTHS = {
-    "developer": 15, "project": 20, "title": 50, "hours": 7, "month": 8,
+    "developer": 15, "project": 20, "title": 50, "hours": 7, "workdays": 6,
+    "month": 8, "day": 10,
     "youtrack-ticket": 15, "youtrack-project": 12, "youtrack-id": 7,
 }
-NUMERIC_COLS = {"hours"}
+NUMERIC_COLS = {"hours", "workdays"}
 
 _YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
 
@@ -50,6 +53,7 @@ class TimelyRow:
     title: str
     hours: float
     month: str  # "Jan-26"
+    day: str    # "YYYY-MM-DD"
 
 
 def _month_str(d: date) -> str:
@@ -124,7 +128,9 @@ def _cell(col: str, row: TimelyRow) -> str:
     if col == "project":   return row.project
     if col == "title":     return row.title[:50]
     if col == "hours":     return "%.1f" % row.hours
+    if col == "workdays":  return "%.2f" % (row.hours / 8)
     if col == "month":     return row.month
+    if col == "day":       return row.day
     m = _YT_RE.match(row.title)
     if col == "youtrack-ticket":  return (m.group(1) + "-" + m.group(2)) if m else "MISSING"
     if col == "youtrack-project": return m.group(1) if m else "MISSING"
@@ -137,7 +143,9 @@ def _sort_key_val(col: str, row: TimelyRow):
     if col == "project":   return row.project.lower()
     if col == "title":     return row.title.lower()
     if col == "hours":     return row.hours
+    if col == "workdays":  return row.hours
     if col == "month":     return _month_sort_key(row.month)
+    if col == "day":       return row.day
     m = _YT_RE.match(row.title)
     if col == "youtrack-ticket":  return (m.group(1) + "-" + m.group(2)).lower() if m else "zzz"
     if col == "youtrack-project": return m.group(1).lower() if m else "zzz"
@@ -198,7 +206,7 @@ def _build_developer_map(full_names: set[str], short_names: dict[str, str]) -> d
 
 
 def _reaggregate(rows: list[TimelyRow], col_names: list[str]) -> list[TimelyRow]:
-    group_cols = [c for c in col_names if c != "hours"]
+    group_cols = [c for c in col_names if c not in ("hours", "workdays")]
     totals: dict[tuple, float] = defaultdict(float)
     for row in rows:
         key = tuple(_cell(c, row) for c in group_cols)
@@ -216,6 +224,7 @@ def _reaggregate(rows: list[TimelyRow], col_names: list[str]) -> list[TimelyRow]
             title=title,
             hours=hours,
             month=vals.get("month", ""),
+            day=vals.get("day", ""),
         ))
     return result
 
@@ -281,7 +290,7 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
     rows = [TimelyRow(
         developer=dev_map[r.developer],
         project=config.timely_short_projects.get(r.project, r.project),
-        title=r.title, hours=r.hours, month=r.month,
+        title=r.title, hours=r.hours, month=r.month, day=r.day,
     ) for r in rows]
 
     # Apply filters
@@ -341,7 +350,7 @@ def _default_range(today: date) -> tuple[date, date]:
 
 
 def _events_to_rows(events: list[dict]) -> list[TimelyRow]:
-    totals: dict[tuple[str, str, str, str], float] = defaultdict(float)
+    totals: dict[tuple[str, str, str, str, str], float] = defaultdict(float)
     for e in events:
         developer = (e.get("user") or {}).get("name", "Unknown")
         project   = (e.get("project") or {}).get("name", "Unknown")
@@ -349,8 +358,8 @@ def _events_to_rows(events: list[dict]) -> list[TimelyRow]:
         day_str   = e.get("day") or ""
         month     = _month_str(date.fromisoformat(day_str)) if day_str else "Unknown"
         hours     = (e.get("duration") or {}).get("total_hours", 0.0)
-        totals[(developer, project, title, month)] += hours
+        totals[(developer, project, title, month, day_str)] += hours
     return [
-        TimelyRow(developer=k[0], project=k[1], title=k[2], month=k[3], hours=v)
+        TimelyRow(developer=k[0], project=k[1], title=k[2], month=k[3], day=k[4], hours=v)
         for k, v in totals.items()
     ]
