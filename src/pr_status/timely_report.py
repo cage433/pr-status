@@ -52,8 +52,10 @@ class TimelyRow:
     project: str
     title: str
     hours: float
-    month: str  # "Jan-26"
-    day: str    # "YYYY-MM-DD"
+    month: str      # "Jan-26"
+    day: str        # "YYYY-MM-DD"
+    yt_project: str = ""  # e.g. "PROJ"
+    yt_id: str = ""       # e.g. "123"
 
 
 def _month_str(d: date) -> str:
@@ -131,10 +133,9 @@ def _cell(col: str, row: TimelyRow) -> str:
     if col == "workdays":  return "%.1f" % (row.hours / 8)
     if col == "month":     return row.month
     if col == "day":       return row.day
-    m = _YT_RE.match(row.title)
-    if col == "youtrack-ticket":  return (m.group(1) + "-" + m.group(2)) if m else "MISSING"
-    if col == "youtrack-project": return m.group(1) if m else "MISSING"
-    if col == "youtrack-id":      return m.group(2) if m else "MISSING"
+    if col == "youtrack-ticket":  return (row.yt_project + "-" + row.yt_id) if (row.yt_project and row.yt_id) else "MISSING"
+    if col == "youtrack-project": return row.yt_project or "MISSING"
+    if col == "youtrack-id":      return row.yt_id or "MISSING"
     return ""
 
 
@@ -146,10 +147,9 @@ def _sort_key_val(col: str, row: TimelyRow):
     if col == "workdays":  return row.hours
     if col == "month":     return _month_sort_key(row.month)
     if col == "day":       return row.day
-    m = _YT_RE.match(row.title)
-    if col == "youtrack-ticket":  return (m.group(1) + "-" + m.group(2)).lower() if m else "zzz"
-    if col == "youtrack-project": return m.group(1).lower() if m else "zzz"
-    if col == "youtrack-id":      return int(m.group(2)) if m else 10 ** 18
+    if col == "youtrack-ticket":  return (row.yt_project + "-" + row.yt_id).lower() if (row.yt_project and row.yt_id) else "zzz"
+    if col == "youtrack-project": return row.yt_project.lower() if row.yt_project else "zzz"
+    if col == "youtrack-id":      return int(row.yt_id) if row.yt_id else 10 ** 18
     return ""
 
 
@@ -214,17 +214,19 @@ def _reaggregate(rows: list[TimelyRow], col_names: list[str]) -> list[TimelyRow]
     result = []
     for key, hours in totals.items():
         vals = dict(zip(group_cols, key))
-        title = (vals.get("title") or
-                 vals.get("youtrack-ticket") or
-                 vals.get("youtrack-project") or
-                 "")
+        yt_ticket = vals.get("youtrack-ticket", "")
+        m = _YT_RE.match(yt_ticket) if yt_ticket else None
+        yt_project = vals.get("youtrack-project") or (m.group(1) if m else "")
+        yt_id      = vals.get("youtrack-id")      or (m.group(2) if m else "")
         result.append(TimelyRow(
             developer=vals.get("developer", ""),
             project=vals.get("project", ""),
-            title=title,
+            title=vals.get("title", ""),
             hours=hours,
             month=vals.get("month", ""),
             day=vals.get("day", ""),
+            yt_project=yt_project,
+            yt_id=yt_id,
         ))
     return result
 
@@ -288,6 +290,7 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
         developer=dev_map[r.developer],
         project=config.timely_short_projects.get(r.project, r.project),
         title=r.title, hours=r.hours, month=r.month, day=r.day,
+        yt_project=r.yt_project, yt_id=r.yt_id,
     ) for r in rows]
 
     # Apply filters (case-insensitive)
@@ -352,7 +355,12 @@ def _events_to_rows(events: list[dict]) -> list[TimelyRow]:
         month     = _month_str(date.fromisoformat(day_str)) if day_str else "Unknown"
         hours     = (e.get("duration") or {}).get("total_hours", 0.0)
         totals[(developer, project, title, month, day_str)] += hours
-    return [
-        TimelyRow(developer=k[0], project=k[1], title=k[2], month=k[3], day=k[4], hours=v)
-        for k, v in totals.items()
-    ]
+    rows = []
+    for k, v in totals.items():
+        m = _YT_RE.match(k[2])
+        rows.append(TimelyRow(
+            developer=k[0], project=k[1], title=k[2], month=k[3], day=k[4], hours=v,
+            yt_project=m.group(1) if m else "",
+            yt_id=m.group(2) if m else "",
+        ))
+    return rows
