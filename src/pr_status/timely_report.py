@@ -291,7 +291,10 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
     widths = [max(COL_WIDTHS[c], len(h)) for c, h in zip(col_names, headers)]
     for row in rows:
         for i, col in enumerate(col_names):
-            widths[i] = max(widths[i], _vlen(_cell(col, row)))
+            w = _vlen(_cell(col, row))
+            if col == "title":
+                w = min(w, 50)
+            widths[i] = max(widths[i], w)
 
     def fmt_row(vals: list[str]) -> str:
         parts = []
@@ -324,7 +327,7 @@ def _events_to_rows(events: list[dict]) -> list[TimelyRow]:
     for e in events:
         developer = (e.get("user") or {}).get("name", "Unknown")
         project   = (e.get("project") or {}).get("name", "Unknown")
-        title     = e.get("note") or ""
+        title     = (e.get("note") or "").replace("\n", " ").strip()
         day_str   = e.get("day") or ""
         month     = _month_str(date.fromisoformat(day_str)) if day_str else "Unknown"
         hours     = (e.get("duration") or {}).get("total_hours", 0.0)
