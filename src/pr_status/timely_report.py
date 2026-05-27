@@ -293,9 +293,10 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
         title=r.title, hours=r.hours, month=r.month, day=r.day,
     ) for r in rows]
 
-    # Apply filters
+    # Apply filters (case-insensitive)
     for col, vals, neg in row_filters:
-        rows = [r for r in rows if (_cell(col, r) in vals) != neg]
+        lower_vals = {v.lower() for v in vals}
+        rows = [r for r in rows if (_cell(col, r).lower() in lower_vals) != neg]
 
     # Re-aggregate: group by displayed non-hours columns and sum hours
     rows = _reaggregate(rows, col_names)
