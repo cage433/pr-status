@@ -9,22 +9,28 @@ from .timely import fetch_events
 from .timely_report_args import TimelyReportArgs
 
 
-KNOWN_COLS = ["developer", "project", "title", "hours", "month"]
+KNOWN_COLS = ["developer", "project", "title", "hours", "month",
+              "youtrack-ticket", "youtrack-project", "youtrack-id"]
 COL_ALIASES = {
     "dev": "developer", "d": "developer",
     "p": "project",
     "t": "title",
     "h": "hours",
     "m": "month",
+    "yt": "youtrack-ticket", "yp": "youtrack-project", "yi": "youtrack-id",
 }
 COL_HEADERS = {
     "developer": "DEVELOPER", "project": "PROJECT", "title": "TITLE",
     "hours": "HOURS", "month": "MONTH",
+    "youtrack-ticket": "YT", "youtrack-project": "YP", "youtrack-id": "YI",
 }
 COL_WIDTHS = {
     "developer": 15, "project": 20, "title": 50, "hours": 7, "month": 8,
+    "youtrack-ticket": 15, "youtrack-project": 12, "youtrack-id": 7,
 }
 NUMERIC_COLS = {"hours"}
+
+_YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
 
 _MONTH_NAMES = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -119,6 +125,10 @@ def _cell(col: str, row: TimelyRow) -> str:
     if col == "title":     return row.title[:50]
     if col == "hours":     return "%.1f" % row.hours
     if col == "month":     return row.month
+    m = _YT_RE.match(row.title)
+    if col == "youtrack-ticket":  return (m.group(1) + "-" + m.group(2)) if m else "MISSING"
+    if col == "youtrack-project": return m.group(1) if m else "MISSING"
+    if col == "youtrack-id":      return m.group(2) if m else "MISSING"
     return ""
 
 
@@ -128,6 +138,10 @@ def _sort_key_val(col: str, row: TimelyRow):
     if col == "title":     return row.title.lower()
     if col == "hours":     return row.hours
     if col == "month":     return _month_sort_key(row.month)
+    m = _YT_RE.match(row.title)
+    if col == "youtrack-ticket":  return (m.group(1) + "-" + m.group(2)).lower() if m else "zzz"
+    if col == "youtrack-project": return m.group(1).lower() if m else "zzz"
+    if col == "youtrack-id":      return int(m.group(2)) if m else 10 ** 18
     return ""
 
 
@@ -192,10 +206,14 @@ def _reaggregate(rows: list[TimelyRow], col_names: list[str]) -> list[TimelyRow]
     result = []
     for key, hours in totals.items():
         vals = dict(zip(group_cols, key))
+        title = (vals.get("title") or
+                 vals.get("youtrack-ticket") or
+                 vals.get("youtrack-project") or
+                 "")
         result.append(TimelyRow(
             developer=vals.get("developer", ""),
             project=vals.get("project", ""),
-            title=vals.get("title", ""),
+            title=title,
             hours=hours,
             month=vals.get("month", ""),
         ))
