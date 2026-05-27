@@ -170,7 +170,12 @@ def _report_data_lines(
                     key.append(k(youtrack_states.get(tid, "MISSING") if tid else "MISSING"))
                 elif col == "workdays":
                     m = _YT_RE.match(pr.title)
-                    wd = yt_workdays.get(m.group(1) + "-" + m.group(2)) if m else None
+                    if m:
+                        tid = m.group(1) + "-" + m.group(2)
+                        tid = config.timely_yt_map.get(tid, tid)
+                        wd = yt_workdays.get(tid)
+                    else:
+                        wd = None
                     key.append(k(wd if wd is not None else float("inf")))
             return key
         all_prs.sort(key=sort_key)
@@ -258,7 +263,9 @@ def _report_data_lines(
             m = _YT_RE.match(pr.title)
             if not m:
                 return ""
-            wd = yt_workdays.get(m.group(1) + "-" + m.group(2))
+            tid = m.group(1) + "-" + m.group(2)
+            tid = config.timely_yt_map.get(tid, tid)
+            wd = yt_workdays.get(tid)
             return "" if wd is None else "%.1f" % wd
         if col in ("comment", "comment-time", "comment-author"): return ""
         return ""

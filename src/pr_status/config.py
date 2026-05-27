@@ -32,6 +32,7 @@ class Config:
     timely_ignored_projects: set[str] = field(default_factory=set)
     timely_short_names: dict[str, str] = field(default_factory=dict)
     timely_short_projects: dict[str, str] = field(default_factory=dict)
+    timely_yt_map: dict[str, str] = field(default_factory=dict)
 
     def author_name(self, author: str) -> str:
         return self.author_names.get(author, author)
@@ -59,6 +60,7 @@ class Config:
         timely_ignored_projects: set[str] = set()
         timely_short_names: dict[str, str] = {}
         timely_short_projects: dict[str, str] = {}
+        timely_yt_map: dict[str, str] = {}
 
         if config_file and os.path.isfile(config_file):
             with open(config_file) as f:
@@ -173,6 +175,14 @@ class Config:
                                 full, short = mapping.split("=", 1)
                                 timely_short_projects[full.strip()] = short.strip()
                         continue
+                    m = re.match(r'^timely-yt-map:\s*(.*)', line)
+                    if m:
+                        for mapping in m.group(1).split(","):
+                            mapping = mapping.strip()
+                            if "=" in mapping:
+                                pr_ticket, timely_ticket = mapping.split("=", 1)
+                                timely_yt_map[pr_ticket.strip().upper()] = timely_ticket.strip().upper()
+                        continue
 
         return Config(
             repo=GithubInfo(owner=owner, repo_name=repo_name),
@@ -191,4 +201,5 @@ class Config:
             timely_ignored_projects=timely_ignored_projects,
             timely_short_names=timely_short_names,
             timely_short_projects=timely_short_projects,
+            timely_yt_map=timely_yt_map,
         )
