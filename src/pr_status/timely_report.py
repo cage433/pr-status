@@ -266,15 +266,16 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
         col = _resolve_col(lhs.strip())
         vals = {v.strip() for v in rhs.split(",")}
         if col == "month" and not neg:
+            month_filter: set[str] = set()
             for v in vals:
                 s, u = _parse_month_spec(v, today)
                 since = min(since, s)
                 upto = max(upto, u)
-            # Named (non-integer) month values also filter rows to that month
-            named = [v for v in vals if not v.strip().isdigit()]
-            if named:
-                normalized = {_month_str(_parse_month_spec(v, today)[0]) for v in named}
-                row_filters.append(("month", normalized, False))
+                d = date(s.year, s.month, 1)
+                while d < u:
+                    month_filter.add(_month_str(d))
+                    d = date(d.year + (d.month // 12), (d.month % 12) + 1, 1)
+            row_filters.append(("month", month_filter, False))
         else:
             row_filters.append((col, vals, neg))
 
