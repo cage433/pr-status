@@ -26,27 +26,21 @@ def _rjust_ansi(s: str, width: int) -> str:
 def _visible_len(s: str) -> int:
     return len(_ANSI_RE.sub('', s))
 
-from .column import Column, _ListError
+from .column import _ListError
 from .column_display import ColumnDisplay
 from .columns import (
     _YT_RE, _timestamp_val,
-    PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, CREATION_DATE_COL,
-    LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL, MARK_COL, LOC_COL,
-    NUM_COMMENTS_COL, REVIEWERS_COL, AGE_COL, LAST_ACTIVITY_COL,
-    UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL,
-    DRAFT_COL, REVIEW_OUTSTANDING_COL, VALID_COL,
-    YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
-    WORKDAYS_COL, COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
+    YOUTRACK_STATE_COL, VALID_COL, WORKDAYS_COL,
+    COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
 )
 from .filter_spec import FilterSpec, ColumnFilterSpec, ComparisonFilterSpec
 from .sort_item import SortItem
 from .config import Config
-from .date_utils import fmt_ts, days_since
+from .date_utils import fmt_ts
 from .github_data import GithubComment, GithubData, GithubPR
 from .github_raw_data import GithubRawData
 from .marks import Marks
 from .pr_context import PRContext
-from .pr_number import PRNumber
 from .report_args import ReportArgs
 from . import youtrack
 from .timely_cache import load_yt_workdays
@@ -98,15 +92,6 @@ def _report_data_lines(
             yt_workdays=yt_workdays,
         )
 
-    def compute_show_time(ctx: PRContext) -> set[str]:
-        date_to_cols: dict[str, list[str]] = {}
-        for col in cols:
-            if not col.is_timestamp: continue
-            val = _timestamp_val(col.name, ctx)
-            if not val: continue
-            date_to_cols.setdefault(val[:10], []).append(col.name)
-        return {c for date_cols in date_to_cols.values() if len(date_cols) > 1 for c in date_cols}
-
     def cell(col: ColumnDisplay, ctx: PRContext, show_time: bool = False) -> str:
         return col.column.cell(ctx, show_time)
 
@@ -120,39 +105,8 @@ def _report_data_lines(
             return key
         all_prs.sort(key=sort_key)
 
-    def _col_filter_val(fs: ColumnFilterSpec, ctx: PRContext) -> str:
-        if fs.column == PULL_REQUEST_COL: return str(ctx.pr.number)
-        return cell(ColumnDisplay(fs.column), ctx)
-
-    def _comparison_result(fs: ComparisonFilterSpec, ctx: PRContext) -> bool:
-        lv = _timestamp_val(fs.left,  ctx) or "1970-01-01T00:00:00Z"
-        rv = _timestamp_val(fs.right, ctx) or "1970-01-01T00:00:00Z"
-        return (lv > rv if fs.op == ">" else lv < rv if fs.op == "<" else
-                lv >= rv if fs.op == ">=" else lv <= rv if fs.op == "<=" else lv == rv)
-
-    def _pr_passes_filter(ctx: PRContext, fs: FilterSpec) -> bool:
-        if isinstance(fs, ComparisonFilterSpec):
-            return _comparison_result(fs, ctx)
-        assert isinstance(fs, ColumnFilterSpec)
-        if fs.column == REVIEWERS_COL:
-            reviewer_names = {ctx.config.author_name(r) for r in ctx.pr.reviewers}
-            matched = (not ctx.pr.reviewers and "none" in fs.values) or bool(reviewer_names & fs.values)
-            return not matched if fs.negate else matched
-        if fs.column == REVIEW_OUTSTANDING_COL:
-            outstanding = {ctx.config.author_name(r) for r in ctx.pr.reviewers
-                           if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")}
-            matched = (not outstanding and "none" in fs.values) or bool(outstanding & fs.values)
-            return not matched if fs.negate else matched
-        val = _col_filter_val(fs, ctx)
-        return (val not in fs.values) if fs.negate else (val in fs.values)
-
-    def _uses_comment_time(fs: FilterSpec) -> bool:
-        if isinstance(fs, ColumnFilterSpec):     return fs.column == COMMENT_TIME_COL
-        if isinstance(fs, ComparisonFilterSpec): return "comment-time" in (fs.left, fs.right)
-        return False
-
-    pr_filters      = [fs for fs in filters if not _uses_comment_time(fs)]
-    comment_filters = [fs for fs in filters if     _uses_comment_time(fs)]
+    pr_filters      = [fs for fs in filters if not fs.uses_comment_time]
+    comment_filters = [fs for fs in filters if     fs.uses_comment_time]
 
     if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and config.youtrack_url and config.youtrack_token:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
@@ -160,7 +114,7 @@ def _report_data_lines(
             youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
 
     if pr_filters:
-        all_prs = [pr for pr in all_prs if all(_pr_passes_filter(make_ctx(pr), fs) for fs in pr_filters)]
+        all_prs = [pr for pr in all_prs if all(fs.matches(make_ctx(pr)) for fs in pr_filters)]
 
     _COMMENT_COLS    = frozenset({COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL})
     _comment_in_cols = any(col.column in _COMMENT_COLS for col in cols)
@@ -169,7 +123,7 @@ def _report_data_lines(
     rows = []
     for pr in all_prs:
         ctx = make_ctx(pr)
-        stc = compute_show_time(ctx)
+        stc = spec.show_time_cols(ctx)
         if _comment_in_cols:
             def comment_cell(col: ColumnDisplay, cr: GithubComment) -> str:
                 if col.column == COMMENT_COL:        return cr.body.split("\n")[0][:70]
@@ -191,7 +145,7 @@ def _report_data_lines(
                 if fs.column == COMMENT_TIME_COL:
                     val = fmt_ts(cr.timestamp, show_time=True)
                     return (val not in fs.values) if fs.negate else (val in fs.values)
-                return _pr_passes_filter(ctx, fs)
+                return fs.matches(ctx)
 
             for cr in comment_source.get(pr.number, []):
                 if not comment_filters or all(_comment_filter_val(fs, cr) for fs in comment_filters):

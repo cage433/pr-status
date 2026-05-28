@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .column import Column
 from .columns import PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL
@@ -6,6 +7,9 @@ from .column_display import ColumnDisplay
 from .filter_spec import FilterSpec
 from .sort_item import SortItem
 from .report_args import ReportArgs
+
+if TYPE_CHECKING:
+    from .pr_context import PRContext
 
 
 @dataclass
@@ -21,6 +25,16 @@ class ReportSpec:
             | {col for fs in self.filters for col in fs.all_cols}
             | {si.column for si in self.sort_cols}
         )
+
+    def show_time_cols(self, ctx: "PRContext") -> set[str]:
+        from .columns import _timestamp_val
+        date_to_cols: dict[str, list[str]] = {}
+        for col in self.cols:
+            if not col.is_timestamp: continue
+            val = _timestamp_val(col.name, ctx)
+            if not val: continue
+            date_to_cols.setdefault(val[:10], []).append(col.name)
+        return {c for date_cols in date_to_cols.values() if len(date_cols) > 1 for c in date_cols}
 
     @staticmethod
     def resolve(args: ReportArgs) -> "ReportSpec":
