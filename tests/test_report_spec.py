@@ -4,7 +4,7 @@ from pr_status.column import Column
 from pr_status.report_args import ReportArgs
 from pr_status.report_spec import (
     ColumnFilterSpec, ComparisonFilterSpec, ReportSpec, _ListError,
-    _COL_BY_NAME, col_header, col_width,
+    _COL_BY_NAME,
 )
 
 
@@ -215,31 +215,31 @@ class TestColHeader(unittest.TestCase):
             "mark": "MARK", "comment": "COMMENT",
         }
         for col, expected in cases.items():
-            self.assertEqual(col_header(_COL_BY_NAME[col]), expected)
+            self.assertEqual(_COL_BY_NAME[col].header, expected)
 
     def test_long_name_header_is_column_name_uppercased(self):
         import dataclasses
-        self.assertEqual(col_header(dataclasses.replace(_COL_BY_NAME["num-comments"],    long_name=True)), "NUM-COMMENTS")
-        self.assertEqual(col_header(dataclasses.replace(_COL_BY_NAME["creation-date"],   long_name=True)), "CREATION-DATE")
-        self.assertEqual(col_header(dataclasses.replace(_COL_BY_NAME["unresolved (all)"],long_name=True)), "UNRESOLVED (ALL)")
+        self.assertEqual(dataclasses.replace(_COL_BY_NAME["num-comments"],    long_name=True).header, "NUM-COMMENTS")
+        self.assertEqual(dataclasses.replace(_COL_BY_NAME["creation-date"],   long_name=True).header, "CREATION-DATE")
+        self.assertEqual(dataclasses.replace(_COL_BY_NAME["unresolved (all)"],long_name=True).header, "UNRESOLVED (ALL)")
 
 
 class TestColWidth(unittest.TestCase):
 
     def test_plain_column_widths(self):
-        self.assertEqual(col_width(_COL_BY_NAME["title"]),        60)
-        self.assertEqual(col_width(_COL_BY_NAME["author"]),       15)
-        self.assertEqual(col_width(_COL_BY_NAME["num-comments"]),  4)
+        self.assertEqual(_COL_BY_NAME["title"].display_width,        60)
+        self.assertEqual(_COL_BY_NAME["author"].display_width,       15)
+        self.assertEqual(_COL_BY_NAME["num-comments"].display_width,  4)
 
     def test_long_name_width_at_least_header_length(self):
         import dataclasses
         col = dataclasses.replace(_COL_BY_NAME["num-comments"], long_name=True)
-        self.assertGreaterEqual(col_width(col), len("NUM-COMMENTS"))
+        self.assertGreaterEqual(col.display_width, len("NUM-COMMENTS"))
 
     def test_long_name_width_not_less_than_data_width(self):
         import dataclasses
         col = dataclasses.replace(_COL_BY_NAME["creation-date"], long_name=True)
-        self.assertGreaterEqual(col_width(col), col_width(_COL_BY_NAME["creation-date"]))
+        self.assertGreaterEqual(col.display_width, _COL_BY_NAME["creation-date"].display_width)
 
 
 if __name__ == "__main__":

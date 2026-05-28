@@ -39,7 +39,7 @@ from . import youtrack
 from .timely_cache import load_yt_workdays
 from .report_spec import (
     ColumnFilterSpec, ComparisonFilterSpec, _ListError,
-    TIMESTAMP_COLS, col_header, col_header_lines, col_is_numeric, col_width,
+    TIMESTAMP_COLS,
     ReportSpec,
 )
 
@@ -361,7 +361,7 @@ def _render_report(
 
     # Aggregate: group by non-numeric columns, sum numeric columns.
     # None means no non-blank value seen yet (displays as blank).
-    numeric_idx = [i for i, c in enumerate(cols) if col_is_numeric(c)]
+    numeric_idx = [i for i, c in enumerate(cols) if c.is_numeric]
     if numeric_idx:
         group_idx = [i for i in range(len(cols)) if i not in set(numeric_idx)]
         grouped: dict[tuple, list[float | None]] = {}
@@ -392,8 +392,8 @@ def _render_report(
                     new_row[ni] = ("%.1f" % t) if c.name == "workdays" else str(int(t))
             rows.append(new_row)
 
-    hdr_lines = [col_header_lines(c) for c in cols]
-    widths = [max(col_width(c), max(_visible_len(l) for l in hdr_lines[i])) for i, c in enumerate(cols)]
+    hdr_lines = [c.header_lines for c in cols]
+    widths = [max(c.display_width, max(_visible_len(l) for l in hdr_lines[i])) for i, c in enumerate(cols)]
     for row in rows:
         for i, val in enumerate(row):
             widths[i] = max(widths[i], _visible_len(val))
@@ -401,7 +401,7 @@ def _render_report(
     def fmt_row(vals: list[str]) -> str:
         parts = []
         for i, (c, val) in enumerate(zip(cols, vals)):
-            if col_is_numeric(c):
+            if c.is_numeric:
                 parts.append(_rjust_ansi(val, widths[i]))
             elif i == len(cols) - 1:
                 parts.append(val)

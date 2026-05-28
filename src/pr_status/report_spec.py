@@ -25,15 +25,15 @@ class _ListError(Exception):
 
 
 ALL_COLUMNS: list[Column] = [
-    Column("pull-request",         "PR",              6,  ("pr",),        abbrev="P"),
+    Column("pull-request",         "PR",              6,  ("pr",)),
     Column("title",                "TITLE",           60, ()),
-    Column("author",               "AUTHOR",          15, ("a",),         abbrev="A"),
-    Column("loc",                  "LOC",             15, (),              abbrev="LOC"),
-    Column("num-comments",         "NC",              4,  ("nc",),         is_numeric=True,   abbrev="NC"),
-    Column("creation-date",        "CREATED",         17, ("cd",),         is_timestamp=True, abbrev="CD"),
-    Column("last-comment-time",    "LAST COMMENT",    17, ("lct",),        is_timestamp=True, abbrev="LCT"),
-    Column("my-last-comment-time", "MY LAST COMMENT", 17, ("mct",),        is_timestamp=True, abbrev="MCT"),
-    Column("mark",                 "MARK",            17, ("mk",),         is_timestamp=True, abbrev="MK"),
+    Column("author",               "AUTHOR",          15, ("a",)),
+    Column("loc",                  "LOC",             15, ()),
+    Column("num-comments",         "NC",              4,  ("nc",),         is_numeric=True),
+    Column("creation-date",        "CREATED",         17, ("cd",),         is_timestamp=True),
+    Column("last-comment-time",    "LAST COMMENT",    17, ("lct",),        is_timestamp=True),
+    Column("my-last-comment-time", "MY LAST COMMENT", 17, ("mct",),        is_timestamp=True),
+    Column("mark",                 "MARK",            17, ("mk",),         is_timestamp=True),
     Column("comment",              "COMMENT",         70, ("c",)),
     Column("comment-time",         "CT",              17, ("ct",),         is_timestamp=True),
     Column("comment-author",       "CA",              20, ("ca",)),
@@ -63,28 +63,6 @@ _ALIAS_TO_NAME: dict[str, str]    = {a: c.name for c in ALL_COLUMNS for a in c.a
 
 TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)
 
-
-def col_header(col: Column) -> str:
-    if col.long_name:
-        return col.name.upper()
-    return col.header
-
-
-def col_is_numeric(col: Column) -> bool:
-    return col.is_numeric
-
-
-def col_header_lines(col: Column) -> list[str]:
-    if col.long_name and col.multi_line_header:
-        return list(col.multi_line_header)
-    return [col_header(col)]
-
-
-def col_width(col: Column) -> int:
-    if col.long_name:
-        lines = col_header_lines(col)
-        return max(col.width, max(len(line) for line in lines))
-    return col.width
 
 
 @dataclass
