@@ -1,7 +1,7 @@
 import unittest
 
-from pr_status.column import (
-    Column, _ListError,
+from pr_status.column import Column, _ListError
+from pr_status.columns import (
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, NUM_COMMENTS_COL,
     CREATION_DATE_COL, LAST_COMMENT_TIME_COL, UNRESOLVED_ALL_COL, WORKDAYS_COL,
 )

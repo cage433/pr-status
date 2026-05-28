@@ -1,9 +1,7 @@
 from dataclasses import dataclass
 
-from .column import (
-    Column,
-    PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL,
-)
+from .column import Column
+from .columns import PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL
 from .column_display import ColumnDisplay
 from .filter_spec import FilterSpec
 from .sort_item import SortItem
