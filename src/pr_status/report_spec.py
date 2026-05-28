@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from .column import (
     Column, _ListError,
-    ALL_COLUMNS, TIMESTAMP_COLS,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL,
 )
 from .column_display import ColumnDisplay
@@ -18,7 +17,19 @@ class ReportSpec:
     cols:      list[ColumnDisplay]
     sort_cols: list[SortItem]
     filters:   list[FilterSpec]
-    all_cols:  set[Column]
+
+    @property
+    def all_cols(self) -> set[Column]:
+        result: set[Column] = {cd.column for cd in self.cols}
+        for fs in self.filters:
+            if isinstance(fs, ComparisonFilterSpec):
+                for side in (fs.left, fs.right):
+                    col = Column.col_from_name(side)
+                    if col and col.is_timestamp:
+                        result.add(col)
+            elif isinstance(fs, ColumnFilterSpec):
+                result.add(fs.column)
+        return result | {si.column for si in self.sort_cols}
 
     @staticmethod
     def resolve(args: ReportArgs) -> "ReportSpec":
@@ -51,16 +62,4 @@ class ReportSpec:
                 fs = dataclasses.replace(fs, values={v.strip() for v in fparts[1].split(",")})
                 filters.append(fs)
 
-        def _referenced_cols() -> set[Column]:
-            result: set[Column] = {cd.column for cd in cols}
-            for fs in filters:
-                if isinstance(fs, ComparisonFilterSpec):
-                    for side in (fs.left, fs.right):
-                        col = Column.col_from_name(side)
-                        if col and col.is_timestamp:
-                            result.add(col)
-                elif isinstance(fs, ColumnFilterSpec):
-                    result.add(fs.column)
-            return result | {si.column for si in sort_cols}
-
-        return ReportSpec(cols=cols, sort_cols=sort_cols, filters=filters, all_cols=_referenced_cols())
+        return ReportSpec(cols=cols, sort_cols=sort_cols, filters=filters)
