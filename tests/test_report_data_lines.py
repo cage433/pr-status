@@ -6,7 +6,7 @@ from pr_status.github_data import GithubComment, GithubData, GithubPR
 from pr_status.loc import LOC
 from pr_status.marks import Marks
 from pr_status.pr_number import PRNumber
-from pr_status.report import _report_data_lines
+from pr_status.report import Report, _report_data_lines
 from pr_status.report_args import ReportArgs
 from pr_status.report_spec import ReportSpec
 
@@ -107,7 +107,7 @@ def run(
         args,
         spec,
         data or make_data(),
-    )
+    ).rows
 
 
 class TestBasicColumns(unittest.TestCase):
@@ -1030,6 +1030,88 @@ class TestValidColumn(unittest.TestCase):
             rows = run("pr,v", filters=["v=false"], config=config, data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
+
+
+class TestReportAggregate(unittest.TestCase):
+
+    def _report(self, columns: str, rows: list[list[str]]) -> Report:
+        return Report(cols=make_spec(columns=columns).cols, rows=rows)
+
+    def test_no_numeric_cols_returns_self(self):
+        r = self._report("title,author", [["My PR", "alice"]])
+        self.assertIs(r.aggregate(), r)
+
+    def test_sums_numeric_col_for_matching_key(self):
+        agg = self._report("author,nc", [["alice", "3"], ["alice", "2"]]).aggregate()
+        self.assertEqual(len(agg.rows), 1)
+        self.assertEqual(agg.rows[0], ["alice", "5"])
+
+    def test_keeps_distinct_keys_separate(self):
+        agg = self._report("author,nc", [["alice", "3"], ["bob", "2"]]).aggregate()
+        self.assertEqual(len(agg.rows), 2)
+
+    def test_workdays_formatted_as_float(self):
+        agg = self._report("author,wd", [["alice", "2.0"], ["alice", "1.5"]]).aggregate()
+        self.assertEqual(agg.rows[0][1], "3.5")
+
+    def test_non_workdays_numeric_formatted_as_int(self):
+        agg = self._report("author,nc", [["alice", "3"], ["alice", "2"]]).aggregate()
+        self.assertEqual(agg.rows[0][1], "5")
+
+    def test_blank_numeric_cells_skipped_in_sum(self):
+        agg = self._report("author,nc", [["alice", "3"], ["alice", ""]]).aggregate()
+        self.assertEqual(agg.rows[0][1], "3")
+
+    def test_all_blank_numeric_cells_produce_blank(self):
+        agg = self._report("author,nc", [["alice", ""], ["alice", ""]]).aggregate()
+        self.assertEqual(agg.rows[0][1], "")
+
+    def test_preserves_insertion_order(self):
+        agg = self._report("author,nc", [["bob", "1"], ["alice", "2"]]).aggregate()
+        self.assertEqual([r[0] for r in agg.rows], ["bob", "alice"])
+
+    def test_strips_ansi_when_comparing_keys(self):
+        red = "\033[31malice\033[0m"
+        agg = self._report("author,nc", [[red, "3"], [red, "2"]]).aggregate()
+        self.assertEqual(len(agg.rows), 1)
+        self.assertEqual(agg.rows[0][1], "5")
+
+    def test_multiple_numeric_cols(self):
+        agg = self._report("author,nc,uc", [["alice", "3", "1"], ["alice", "2", "4"]]).aggregate()
+        self.assertEqual(agg.rows[0], ["alice", "5", "5"])
+
+
+class TestReportWidths(unittest.TestCase):
+
+    def _report(self, columns: str, rows: list[list[str]]) -> Report:
+        return Report(cols=make_spec(columns=columns).cols, rows=rows)
+
+    def test_width_at_least_column_display_width(self):
+        ws = self._report("author", [["al"]]).widths()
+        self.assertGreaterEqual(ws[0], 15)  # author display_width is 15
+
+    def test_width_expands_for_long_data(self):
+        ws = self._report("author", [["x" * 50]]).widths()
+        self.assertEqual(ws[0], 50)
+
+    def test_width_ignores_ansi_escape_codes(self):
+        long_ansi = "\033[32m" + "x" * 30 + "\033[0m"  # 30 visible chars
+        ws = self._report("author", [[long_ansi]]).widths()
+        self.assertEqual(ws[0], 30)
+
+    def test_width_is_max_across_all_rows(self):
+        ws = self._report("author", [["short"], ["x" * 40]]).widths()
+        self.assertEqual(ws[0], 40)
+
+    def test_width_accounts_for_header(self):
+        # "NC" header is 2 chars, display_width=4, data is empty → width is 4
+        ws = self._report("nc", [[""]]).widths()
+        self.assertGreaterEqual(ws[0], 4)
+
+    def test_multiple_columns_independent_widths(self):
+        ws = self._report("author,nc", [["x" * 20, "999"]]).widths()
+        self.assertEqual(ws[0], 20)
+        self.assertGreaterEqual(ws[1], 3)  # "999" is 3 chars
 
 
 class TestTimelyImportDoesNotPollutePRColumns(unittest.TestCase):
