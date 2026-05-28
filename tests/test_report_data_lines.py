@@ -286,42 +286,42 @@ class TestBasicColumns(unittest.TestCase):
         self.assertEqual(rows[0][0], "0")
 
 
-class TestComparisonColumn(unittest.TestCase):
+class TestComparisonFilter(unittest.TestCase):
 
-    def test_comparison_true_when_lct_after_cd(self):
+    def test_comparison_filter_includes_pr_when_true(self):
         pr = make_pr(1, created_at="2024-01-01T00:00:00Z")
         rows_all = {PRNumber(1): [make_comment("hi", timestamp="2024-06-01T12:00:00Z")]}
         data = make_data(prs=[pr], rows_all=rows_all)
-        rows = run("lct>cd", data=data)
-        self.assertEqual(rows[0][0], "true")
+        rows = run("pr", filters=["lct>cd"], data=data)
+        self.assertEqual(len(rows), 1)
 
-    def test_comparison_false_when_lct_before_cd(self):
+    def test_comparison_filter_excludes_pr_when_false(self):
         pr = make_pr(1, created_at="2024-06-01T00:00:00Z")
         rows_all = {PRNumber(1): [make_comment("hi", timestamp="2024-01-01T12:00:00Z")]}
         data = make_data(prs=[pr], rows_all=rows_all)
-        rows = run("lct>cd", data=data)
-        self.assertEqual(rows[0][0], "false")
+        rows = run("pr", filters=["lct>cd"], data=data)
+        self.assertEqual(len(rows), 0)
 
-    def test_comparison_with_date_literal(self):
+    def test_comparison_filter_with_date_literal(self):
         pr = make_pr(1, created_at="2024-06-01T00:00:00Z")
         data = make_data(prs=[pr])
-        rows = run("cd>2024-01-01", data=data)
-        self.assertEqual(rows[0][0], "true")
+        rows = run("pr", filters=["cd>2024-01-01"], data=data)
+        self.assertEqual(len(rows), 1)
 
-    def test_comparison_all_operators(self):
+    def test_comparison_filter_all_operators(self):
         pr = make_pr(1, created_at="2024-06-01T00:00:00Z")
         data = make_data(prs=[pr])
         cases = [
-            ("cd>2024-01-01",  "true"),
-            ("cd<2024-01-01",  "false"),
-            ("cd>=2024-06-01", "true"),
-            ("cd<=2024-06-01", "true"),
-            ("cd==2024-06-01", "true"),
+            ("cd>2024-01-01",  1),
+            ("cd<2024-01-01",  0),
+            ("cd>=2024-06-01", 1),
+            ("cd<=2024-06-01", 1),
+            ("cd==2024-06-01", 1),
         ]
-        for columns, expected in cases:
-            with self.subTest(columns=columns):
-                rows = run(columns, data=data)
-                self.assertEqual(rows[0][0], expected)
+        for filt, expected_count in cases:
+            with self.subTest(filter=filt):
+                rows = run("pr", filters=[filt], data=data)
+                self.assertEqual(len(rows), expected_count)
 
 
 class TestFiltering(unittest.TestCase):

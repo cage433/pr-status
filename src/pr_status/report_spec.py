@@ -1,25 +1,22 @@
+import dataclasses
 import re
-from abc import ABC
 from dataclasses import dataclass
-from typing import Any
 
-from .column import Column
+from .column import Column, FilterSpec
 from .date_utils import parse_date_literal
 from .report_args import ReportArgs
 
 
-class ColSpec(ABC):
-    pass
+@dataclass
+class ColumnFilterSpec(FilterSpec):
+    column: Column
+    values: set[str]
+    negate: bool
 
 @dataclass
-class PlainColSpec(ColSpec):
-    name: str
-    long_name: bool = False
-
-@dataclass
-class ComparisonColSpec(ColSpec):
-    left: str
-    op: str
+class ComparisonFilterSpec(FilterSpec):
+    left:  str
+    op:    str
     right: str
 
 
@@ -61,52 +58,41 @@ ALL_COLUMNS: list[Column] = [
     Column("workdays",             "WD",              6,  ("wd",),         is_numeric=True),
 ]
 
-_COL_BY_NAME:   dict[str, Column] = {c.name:  c      for c in ALL_COLUMNS}
+_COL_BY_NAME:   dict[str, Column] = {c.name: c      for c in ALL_COLUMNS}
 _ALIAS_TO_NAME: dict[str, str]    = {a: c.name for c in ALL_COLUMNS for a in c.aliases}
 
-# Derived sets kept for callers that need fast membership tests
 TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)
 
 
-def col_header(spec: ColSpec) -> str:
-    if isinstance(spec, ComparisonColSpec):
-        def _abbrev(s: str) -> str:
-            col = _COL_BY_NAME.get(s)
-            return col.abbrev if col and col.abbrev else s[:10]
-        return "%s%s%s" % (_abbrev(spec.left), spec.op, _abbrev(spec.right))
-    if isinstance(spec, PlainColSpec) and spec.long_name:
-        return spec.name.upper()
-    return _COL_BY_NAME[spec.name].header
+def col_header(col: Column) -> str:
+    if col.long_name:
+        return col.name.upper()
+    return col.header
 
 
-def col_is_numeric(spec: ColSpec) -> bool:
-    return isinstance(spec, PlainColSpec) and _COL_BY_NAME[spec.name].is_numeric
+def col_is_numeric(col: Column) -> bool:
+    return col.is_numeric
 
 
-def col_header_lines(spec: ColSpec) -> list[str]:
-    if isinstance(spec, PlainColSpec) and spec.long_name:
-        col = _COL_BY_NAME[spec.name]
-        if col.multi_line_header:
-            return list(col.multi_line_header)
-    return [col_header(spec)]
+def col_header_lines(col: Column) -> list[str]:
+    if col.long_name and col.multi_line_header:
+        return list(col.multi_line_header)
+    return [col_header(col)]
 
 
-def col_width(spec: ColSpec) -> int:
-    if isinstance(spec, ComparisonColSpec):
-        return max(len(col_header(spec)), 5)  # 5 for "false"
-    col = _COL_BY_NAME[spec.name]
-    if isinstance(spec, PlainColSpec) and spec.long_name:
-        lines = col_header_lines(spec)
+def col_width(col: Column) -> int:
+    if col.long_name:
+        lines = col_header_lines(col)
         return max(col.width, max(len(line) for line in lines))
     return col.width
 
 
 @dataclass
 class ReportSpec:
-    cols: list[ColSpec]
+    cols:      list[Column]
     sort_cols: list[tuple[str, bool]]  # (col_name, reversed)
-    filters: list[tuple[ColSpec, set[str], bool]]  # bool: True = negate (!=)
-    all_cols: set[str]
+    filters:   list[FilterSpec]
+    all_cols:  set[str]
 
     @staticmethod
     def resolve(args: ReportArgs) -> "ReportSpec":
@@ -123,7 +109,17 @@ class ReportSpec:
                 raise _ListError("Unknown column: %r" % name)
             raise _ListError("Ambiguous column %r (matches: %s)" % (name, ", ".join(matches)))
 
-        def parse_col_spec(spec: str) -> ColSpec:
+        def parse_col(spec: str) -> Column:
+            spec = spec.strip()
+            if re.match(r'^.+\s*(>=|<=|==|>|<)\s*.+$', spec):
+                raise _ListError("Comparison expressions cannot be used as columns: %r" % spec)
+            long_name = spec.endswith("_")
+            if long_name:
+                spec = spec[:-1].rstrip()
+            col = _COL_BY_NAME[resolve_col(spec)]
+            return dataclasses.replace(col, long_name=True) if long_name else col
+
+        def parse_filter_spec(spec: str) -> FilterSpec:
             spec = spec.strip()
             m = re.match(r'^(.+?)\s*(>=|<=|==|>|<)\s*(.+)$', spec)
             if m:
@@ -137,11 +133,8 @@ class ReportSpec:
                     col = _COL_BY_NAME.get(val)
                     if col and not col.is_timestamp:
                         raise _ListError("Column %r is not a timestamp column" % val)
-                return ComparisonColSpec(left=left, op=op, right=right)
-            long_name = spec.endswith("_")
-            if long_name:
-                spec = spec[:-1].rstrip()
-            return PlainColSpec(resolve_col(spec), long_name=long_name)
+                return ComparisonFilterSpec(left=left, op=op, right=right)
+            return ColumnFilterSpec(column=_COL_BY_NAME[resolve_col(spec)], values=set(), negate=False)
 
         def parse_sort_item(s: str) -> tuple[str, bool]:
             s = s.strip()
@@ -149,36 +142,45 @@ class ReportSpec:
                 return (resolve_col(s[:-2].rstrip()), True)
             return (resolve_col(s), False)
 
-        cols      = [parse_col_spec(c) for c in args.columns.split(",") if c.strip()] if args.columns else [PlainColSpec("pull-request"), PlainColSpec("title"), PlainColSpec("author")]
+        cols      = [parse_col(c) for c in args.columns.split(",") if c.strip()] if args.columns else [_COL_BY_NAME["pull-request"], _COL_BY_NAME["title"], _COL_BY_NAME["author"]]
         sort_cols = [parse_sort_item(c) for c in args.sort.split(",") if c.strip()] if args.sort else []
 
-        filters: list[tuple[ColSpec, set[str], bool]] = []
+        filters: list[FilterSpec] = []
         for fspec in args.filters:
             fspec = fspec.strip()
-            if not fspec: continue
+            if not fspec:
+                continue
             ne_parts = fspec.split("!=", 1)
             if len(ne_parts) == 2:
-                filters.append((parse_col_spec(ne_parts[0].strip()), {v.strip() for v in ne_parts[1].split(",")}, True))
+                fs = parse_filter_spec(ne_parts[0].strip())
+                if not isinstance(fs, ColumnFilterSpec):
+                    raise _ListError("Invalid --filter: != not valid for comparison filters")
+                fs = dataclasses.replace(fs, values={v.strip() for v in ne_parts[1].split(",")}, negate=True)
+                filters.append(fs)
                 continue
             fparts = re.split(r'(?<![><=!])=(?!=)', fspec, maxsplit=1)
             if len(fparts) == 1:
-                col = parse_col_spec(fparts[0].strip())
-                if not isinstance(col, ComparisonColSpec):
+                fs = parse_filter_spec(fparts[0].strip())
+                if not isinstance(fs, ComparisonFilterSpec):
                     raise _ListError("Invalid --filter (expected col=val,...): %r" % fspec)
-                filters.append((col, {"true"}, False))
+                filters.append(fs)
             else:
-                filters.append((parse_col_spec(fparts[0].strip()), {v.strip() for v in fparts[1].split(",")}, False))
+                fs = parse_filter_spec(fparts[0].strip())
+                if not isinstance(fs, ColumnFilterSpec):
+                    raise _ListError("Invalid --filter: = not valid for comparison filters")
+                fs = dataclasses.replace(fs, values={v.strip() for v in fparts[1].split(",")})
+                filters.append(fs)
 
         def _referenced_cols() -> set[str]:
-            names: set[str] = set()
-            for s in cols + [fc for fc, _, _ in filters]:
-                if isinstance(s, ComparisonColSpec):
-                    for side in (s.left, s.right):
+            names: set[str] = {col.name for col in cols}
+            for fs in filters:
+                if isinstance(fs, ComparisonFilterSpec):
+                    for side in (fs.left, fs.right):
                         col = _COL_BY_NAME.get(side)
                         if col and col.is_timestamp:
                             names.add(side)
-                else:
-                    names.add(s.name)
+                elif isinstance(fs, ColumnFilterSpec):
+                    names.add(fs.column.name)
             return names | {col for col, _ in sort_cols}
 
         return ReportSpec(cols=cols, sort_cols=sort_cols, filters=filters, all_cols=_referenced_cols())

@@ -1,4 +1,9 @@
-from dataclasses import dataclass, field
+from abc import ABC
+from dataclasses import dataclass
+
+
+class FilterSpec(ABC):
+    pass
 
 
 @dataclass(frozen=True)
@@ -11,3 +16,4 @@ class Column:
     is_numeric:        bool                    = False
     abbrev:            str | None              = None
     multi_line_header: tuple[str, ...] | None  = None
+    long_name:         bool                    = False
