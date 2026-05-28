@@ -4,27 +4,35 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from .column import Column
 from .config import Config
 from .timely_cache import CACHE_START, fetch_events_from_cache
 from .timely_report_args import TimelyReportArgs
 
 
-ALL_COLUMNS: list[Column] = [
-    Column("developer",        "DEVELOPER", 15, ("dev", "d")),
-    Column("project",          "PROJECT",   20, ("p",)),
-    Column("title",            "TITLE",     50, ("t",)),
-    Column("hours",            "HOURS",     7,  ("h",),           is_numeric=True),
-    Column("workdays",         "WD",        6,  ("w", "wd"),      is_numeric=True),
-    Column("month",            "MONTH",     8,  ("m",)),
-    Column("day",              "DAY",       10, ("y",)),
-    Column("youtrack-ticket",  "YT",        15, ("yt",)),
-    Column("youtrack-project", "YP",        12, ("yp",)),
-    Column("youtrack-id",      "YI",        7,  ("yi",)),
+@dataclass(frozen=True)
+class _TCol:
+    name:       str
+    header:     str
+    width:      int
+    aliases:    tuple[str, ...] = ()
+    is_numeric: bool = False
+
+
+ALL_COLUMNS: list[_TCol] = [
+    _TCol("developer",        "DEVELOPER", 15, ("dev", "d")),
+    _TCol("project",          "PROJECT",   20, ("p",)),
+    _TCol("title",            "TITLE",     50, ("t",)),
+    _TCol("hours",            "HOURS",     7,  ("h",),           True),
+    _TCol("workdays",         "WD",        6,  ("w", "wd"),      True),
+    _TCol("month",            "MONTH",     8,  ("m",)),
+    _TCol("day",              "DAY",       10, ("y",)),
+    _TCol("youtrack-ticket",  "YT",        15, ("yt",)),
+    _TCol("youtrack-project", "YP",        12, ("yp",)),
+    _TCol("youtrack-id",      "YI",        7,  ("yi",)),
 ]
 
-_COL_BY_NAME:   dict[str, Column] = {c.name: c      for c in ALL_COLUMNS}
-_ALIAS_TO_NAME: dict[str, str]    = {a: c.name for c in ALL_COLUMNS for a in c.aliases}
+_COL_BY_NAME:   dict[str, _TCol] = {c.name: c      for c in ALL_COLUMNS}
+_ALIAS_TO_NAME: dict[str, str]   = {a: c.name for c in ALL_COLUMNS for a in c.aliases}
 
 _YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
 

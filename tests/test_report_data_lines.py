@@ -1032,5 +1032,33 @@ class TestValidColumn(unittest.TestCase):
         self.assertIn("2", rows[0][0])
 
 
+class TestTimelyImportDoesNotPollutePRColumns(unittest.TestCase):
+    """Importing timely_report must not overwrite Column._registry entries."""
+
+    @classmethod
+    def setUpClass(cls):
+        import pr_status.timely_report  # noqa: F401
+
+    def test_title_column_returns_pr_title(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-1 my feature")])
+        rows = run("title", data=data)
+        self.assertEqual(rows[0][0], "PROJ-1 my feature")
+
+    def test_youtrack_project_column_returns_project(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-123 fix something")])
+        rows = run("yp", data=data)
+        self.assertEqual(rows[0][0], "PROJ")
+
+    def test_youtrack_ticket_column_returns_ticket(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-123 fix something")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "PROJ-123")
+
+    def test_youtrack_id_column_returns_id(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-123 fix something")])
+        rows = run("yi", data=data)
+        self.assertEqual(rows[0][0], "123")
+
+
 if __name__ == "__main__":
     unittest.main()
