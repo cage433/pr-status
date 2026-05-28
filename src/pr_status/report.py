@@ -1,6 +1,6 @@
 import re
 import sys
-from typing import Any
+from typing import Any, Callable
 
 
 class _Rev:
@@ -46,11 +46,157 @@ from .date_utils import fmt_ts, days_since
 from .github_data import GithubComment, GithubData, GithubPR
 from .github_raw_data import GithubRawData
 from .marks import Marks
+from .pr_context import PRContext
 from .pr_number import PRNumber
 from .report_args import ReportArgs
 from . import youtrack
 from .timely_cache import load_yt_workdays
 from .report_spec import ReportSpec
+
+
+# --- Module-level helpers ---
+
+def _last_comment(ctx: PRContext, user_only: bool = False) -> str:
+    rows = ctx.comments
+    if user_only:
+        rows = [r for r in rows if r.author == ctx.config.repo.gh_user]
+    return max((r.timestamp for r in rows), default="")
+
+def _yt_match(ctx: PRContext):
+    return _YT_RE.match(ctx.pr.title)
+
+def _timestamp_val(col: str, ctx: PRContext) -> str:
+    if col not in TIMESTAMP_COLS:          return col
+    if col == "creation-date":             return ctx.pr.createdAt
+    if col == "last-comment-time":         return _last_comment(ctx)
+    if col == "my-last-comment-time":      return _last_comment(ctx, user_only=True)
+    if col == "mark":                      return ctx.marks.get(ctx.pr.number)
+    return ""
+
+
+# --- Named cell functions (complex columns) ---
+
+def _cell_loc(ctx: PRContext, _: bool) -> str:
+    adds, dels = ctx.loc
+    return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
+
+def _cell_reviewers(ctx: PRContext, _: bool) -> str:
+    GREEN, RED, ORANGE, RESET = "\033[32m", "\033[31m", "\033[38;5;208m", "\033[0m"
+    use_color = sys.stdout.isatty()
+    parts = []
+    for r in ctx.pr.reviewers:
+        rname = ctx.config.author_name(r)
+        state = ctx.pr.reviewer_states.get(r, "")
+        if use_color and state == "APPROVED":            parts.append(GREEN + rname + RESET)
+        elif use_color and state == "CHANGES_REQUESTED": parts.append(RED + rname + RESET)
+        elif use_color and state == "COMMENTED":         parts.append(ORANGE + rname + RESET)
+        else:                                            parts.append(rname)
+    return ", ".join(parts)
+
+def _cell_valid(ctx: PRContext, _: bool) -> str:
+    _, _, ua = ctx.unresolved
+    m = _yt_match(ctx)
+    yt_state     = ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
+    all_approved = bool(ctx.pr.reviewers) and all(
+        ctx.pr.reviewer_states.get(r, "") == "APPROVED" for r in ctx.pr.reviewers)
+    yt_ok    = (m is not None and yt_state == "Review") or ("documentation" in ctx.pr.labels and m is None)
+    is_valid = bool(ctx.pr.reviewers) and (ua == 0 or all_approved) and yt_ok
+    return "true" if is_valid else "false"
+
+def _cell_workdays(ctx: PRContext, _: bool) -> str:
+    m = _yt_match(ctx)
+    if not m: return ""
+    tid = (m.group(1) + "-" + m.group(2)).upper()
+    tid = ctx.config.timely_yt_map.get(tid, tid)
+    wd = ctx.yt_workdays.get(tid)
+    return "" if wd is None else "%.1f" % wd
+
+def _cell_yt_state(ctx: PRContext, _: bool) -> str:
+    m = _yt_match(ctx)
+    if not m: return "MISSING"
+    return ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "—")
+
+
+# --- Named sort-key functions (complex columns) ---
+
+def _sort_key_workdays(ctx: PRContext) -> float:
+    m = _yt_match(ctx)
+    if not m: return float("inf")
+    tid = (m.group(1) + "-" + m.group(2)).upper()
+    tid = ctx.config.timely_yt_map.get(tid, tid)
+    wd = ctx.yt_workdays.get(tid)
+    return wd if wd is not None else float("inf")
+
+def _sort_key_yt_id(ctx: PRContext) -> int:
+    m = _yt_match(ctx)
+    return int(m.group(2)) if m else 10**18
+
+def _sort_key_yt_state(ctx: PRContext) -> str:
+    m = _yt_match(ctx)
+    if not m: return "MISSING"
+    return ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "MISSING")
+
+
+# --- Dispatch tables ---
+
+_CELL_FNS: dict[Column, Callable[[PRContext, bool], str]] = {
+    PULL_REQUEST_COL:       lambda ctx, _:  "#%-5s" % ctx.pr.number,
+    TITLE_COL:              lambda ctx, _:  ctx.pr.title[:58],
+    AUTHOR_COL:             lambda ctx, _:  ctx.config.author_name(ctx.pr.author),
+    CREATION_DATE_COL:      lambda ctx, st: fmt_ts(ctx.pr.createdAt, st),
+    LAST_COMMENT_TIME_COL:  lambda ctx, st: fmt_ts(_last_comment(ctx), st),
+    MY_LAST_COMMENT_COL:    lambda ctx, st: fmt_ts(_last_comment(ctx, user_only=True), st, blank_if_empty=True),
+    MARK_COL:               lambda ctx, st: fmt_ts(ctx.marks.get(ctx.pr.number), st, blank_if_empty=True),
+    LOC_COL:                _cell_loc,
+    NUM_COMMENTS_COL:       lambda ctx, _:  str(len(ctx.marked_comments)),
+    REVIEWERS_COL:          _cell_reviewers,
+    AGE_COL:                lambda ctx, _:  "" if (d := days_since(ctx.pr.createdAt)) is None else str(d),
+    LAST_ACTIVITY_COL:      lambda ctx, _:  "" if (d := days_since(ctx.last_activity_ts)) is None else str(d),
+    UNRESOLVED_ALL_COL:     lambda ctx, _:  str(ctx.unresolved[0]) if ctx.unresolved[0] else "",
+    UNRESOLVED_HUMAN_COL:   lambda ctx, _:  str(ctx.unresolved[1]) if ctx.unresolved[1] else "",
+    UNRESOLVED_AI_COL:      lambda ctx, _:  str(ctx.unresolved[2]) if ctx.unresolved[2] else "",
+    DRAFT_COL:              lambda ctx, _:  "true" if ctx.pr.isDraft else "false",
+    REVIEW_OUTSTANDING_COL: lambda ctx, _:  ", ".join(
+        ctx.config.author_name(r) for r in ctx.pr.reviewers
+        if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")),
+    VALID_COL:              _cell_valid,
+    YOUTRACK_TICKET_COL:    lambda ctx, _:  (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "MISSING",
+    YOUTRACK_PROJECT_COL:   lambda ctx, _:  (m := _yt_match(ctx)) and m.group(1) or "MISSING",
+    YOUTRACK_ID_COL:        lambda ctx, _:  (m := _yt_match(ctx)) and m.group(2) or "MISSING",
+    YOUTRACK_STATE_COL:     _cell_yt_state,
+    WORKDAYS_COL:           _cell_workdays,
+    COMMENT_COL:            lambda ctx, _:  "",
+    COMMENT_TIME_COL:       lambda ctx, _:  "",
+    COMMENT_AUTHOR_COL:     lambda ctx, _:  "",
+}
+
+_SORT_KEY_FNS: dict[Column, Callable[[PRContext], Any]] = {
+    PULL_REQUEST_COL:       lambda ctx: ctx.pr.number,
+    TITLE_COL:              lambda ctx: ctx.pr.title.lower(),
+    AUTHOR_COL:             lambda ctx: ctx.config.author_name(ctx.pr.author).lower(),
+    CREATION_DATE_COL:      lambda ctx: ctx.pr.createdAt or "",
+    LAST_COMMENT_TIME_COL:  lambda ctx: _last_comment(ctx) or "",
+    MY_LAST_COMMENT_COL:    lambda ctx: _last_comment(ctx, user_only=True) or "",
+    MARK_COL:               lambda ctx: ctx.marks.get(ctx.pr.number) or "",
+    LOC_COL:                lambda ctx: sum(ctx.loc),
+    NUM_COMMENTS_COL:       lambda ctx: len(ctx.marked_comments),
+    AGE_COL:                lambda ctx: days_since(ctx.pr.createdAt) or 0,
+    LAST_ACTIVITY_COL:      lambda ctx: -1 if (d := days_since(ctx.last_activity_ts)) is None else d,
+    UNRESOLVED_ALL_COL:     lambda ctx: ctx.unresolved[0],
+    UNRESOLVED_HUMAN_COL:   lambda ctx: ctx.unresolved[1],
+    UNRESOLVED_AI_COL:      lambda ctx: ctx.unresolved[2],
+    REVIEWERS_COL:          lambda ctx: ", ".join(ctx.config.author_name(r) for r in ctx.pr.reviewers).lower(),
+    DRAFT_COL:              lambda ctx: ctx.pr.isDraft,
+    REVIEW_OUTSTANDING_COL: lambda ctx: ", ".join(
+        ctx.config.author_name(r) for r in ctx.pr.reviewers
+        if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")).lower(),
+    VALID_COL:              lambda ctx: _cell_valid(ctx, False) == "true",
+    YOUTRACK_TICKET_COL:    lambda ctx: (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "MISSING",
+    YOUTRACK_PROJECT_COL:   lambda ctx: (m := _yt_match(ctx)) and m.group(1) or "MISSING",
+    YOUTRACK_ID_COL:        _sort_key_yt_id,
+    YOUTRACK_STATE_COL:     _sort_key_yt_state,
+    WORKDAYS_COL:           _sort_key_workdays,
+}
 
 
 def run_report(
@@ -86,222 +232,68 @@ def _report_data_lines(
     youtrack_states   = data.youtrack_states
     yt_workdays: dict[str, float] = load_yt_workdays() if WORKDAYS_COL in spec.all_cols else {}
 
-    def get_author(pr: GithubPR) -> str:
-        return config.author_name(pr.author)
+    def make_ctx(pr: GithubPR) -> PRContext:
+        return PRContext(
+            config=config, marks=marks, pr=pr,
+            comments=rows_all.get(pr.number, []),
+            marked_comments=rows_marked.get(pr.number, []),
+            loc=loc_results.get(pr.number, (0, 0)),
+            unresolved=unresolved_counts.get(pr.number, (0, 0, 0)),
+            last_activity_ts=last_activity.get(pr.number, ""),
+            youtrack_states=youtrack_states,
+            yt_workdays=yt_workdays,
+        )
 
-    def count_since(pr_num: PRNumber) -> int:
-        return len(rows_marked.get(pr_num, []))
-
-    def get_last_comment(pr_num: PRNumber, user_only: bool = False) -> str:
-        rows = rows_all.get(pr_num, [])
-        if user_only:
-            rows = [r for r in rows if r.author == config.repo.gh_user]
-        return max((r.timestamp for r in rows), default="")
-
-    def timestamp_val(col: str, pr: GithubPR) -> str:
-        if col not in TIMESTAMP_COLS:     return col  # date literal
-        if col == "creation-date":        return pr.createdAt
-        if col == "last-comment-time":    return get_last_comment(pr.number)
-        if col == "my-last-comment-time": return get_last_comment(pr.number, user_only=True)
-        if col == "mark":                 return marks.get(pr.number)
-        return ""
-
-    def compute_show_time(pr: GithubPR) -> set[str]:
+    def compute_show_time(ctx: PRContext) -> set[str]:
         date_to_cols: dict[str, list[str]] = {}
         for col in cols:
             if not col.is_timestamp: continue
-            val = timestamp_val(col.name, pr)
+            val = _timestamp_val(col.name, ctx)
             if not val: continue
             date_to_cols.setdefault(val[:10], []).append(col.name)
         return {c for date_cols in date_to_cols.values() if len(date_cols) > 1 for c in date_cols}
 
+    def cell(col: ColumnDisplay, ctx: PRContext, show_time: bool = False) -> str:
+        return _CELL_FNS.get(col.column, lambda _ctx, _st: "")(ctx, show_time)
+
     if sort_cols:
         def sort_key(pr: GithubPR) -> list[Any]:
+            ctx = make_ctx(pr)
             key: list[Any] = []
             for si in sort_cols:
-                def k(v: Any) -> Any:
-                    return _Rev(v) if si.reverse else v
-                if si.column == PULL_REQUEST_COL:
-                    key.append(k(pr.number))
-                elif si.column == TITLE_COL:
-                    key.append(k(pr.title.lower()))
-                elif si.column == AUTHOR_COL:
-                    key.append(k(get_author(pr).lower()))
-                elif si.column == CREATION_DATE_COL:
-                    key.append(k(pr.createdAt or ""))
-                elif si.column == LAST_COMMENT_TIME_COL:
-                    key.append(k(get_last_comment(pr.number) or ""))
-                elif si.column == MY_LAST_COMMENT_COL:
-                    key.append(k(get_last_comment(pr.number, user_only=True) or ""))
-                elif si.column == MARK_COL:
-                    key.append(k(marks.get(pr.number) or ""))
-                elif si.column == LOC_COL:
-                    adds, dels = loc_results.get(pr.number, (0, 0))
-                    key.append(k(adds + dels))
-                elif si.column == NUM_COMMENTS_COL:
-                    key.append(k(count_since(pr.number)))
-                elif si.column == AGE_COL:
-                    key.append(k(days_since(pr.createdAt) or 0))
-                elif si.column == LAST_ACTIVITY_COL:
-                    d = days_since(last_activity.get(pr.number, ""))
-                    key.append(k(-1 if d is None else d))
-                elif si.column in (UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL):
-                    uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-                    val = uc if si.column == UNRESOLVED_ALL_COL else uh if si.column == UNRESOLVED_HUMAN_COL else ua
-                    key.append(k(val))
-                elif si.column == REVIEWERS_COL:
-                    key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
-                elif si.column == DRAFT_COL:
-                    key.append(k(pr.isDraft))
-                elif si.column == REVIEW_OUTSTANDING_COL:
-                    outstanding = [config.author_name(r) for r in pr.reviewers
-                                   if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
-                    key.append(k(", ".join(outstanding).lower()))
-                elif si.column == VALID_COL:
-                    _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-                    m = _YT_RE.match(pr.title)
-                    yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
-                    all_approved = bool(pr.reviewers) and all(pr.reviewer_states.get(r, "") == "APPROVED" for r in pr.reviewers)
-                    yt_ok = (m is not None and yt_state == "Review") or ("documentation" in pr.labels and m is None)
-                    is_valid = bool(pr.reviewers) and (ua == 0 or all_approved) and yt_ok
-                    key.append(k(is_valid))
-                elif si.column == YOUTRACK_TICKET_COL:
-                    m = _YT_RE.match(pr.title)
-                    key.append(k(m.group(1) + '-' + m.group(2) if m else "MISSING"))
-                elif si.column == YOUTRACK_PROJECT_COL:
-                    m = _YT_RE.match(pr.title)
-                    key.append(k(m.group(1) if m else "MISSING"))
-                elif si.column == YOUTRACK_ID_COL:
-                    m = _YT_RE.match(pr.title)
-                    key.append(k(int(m.group(2)) if m else 10**18))
-                elif si.column == YOUTRACK_STATE_COL:
-                    m = _YT_RE.match(pr.title)
-                    tid = m.group(1) + "-" + m.group(2) if m else None
-                    key.append(k(youtrack_states.get(tid, "MISSING") if tid else "MISSING"))
-                elif si.column == WORKDAYS_COL:
-                    m = _YT_RE.match(pr.title)
-                    if m:
-                        tid = (m.group(1) + "-" + m.group(2)).upper()
-                        tid = config.timely_yt_map.get(tid, tid)
-                        wd = yt_workdays.get(tid)
-                    else:
-                        wd = None
-                    key.append(k(wd if wd is not None else float("inf")))
+                v = _SORT_KEY_FNS.get(si.column, lambda _: "")(ctx)
+                key.append(_Rev(v) if si.reverse else v)
             return key
         all_prs.sort(key=sort_key)
 
-    def cell(
-        col: ColumnDisplay,
-        pr: GithubPR,
-        show_time_cols: frozenset[str] = frozenset(),
-    ) -> str:
-        c = col.column
-        if c == PULL_REQUEST_COL:         return "#%-5s" % pr.number
-        if c == TITLE_COL:                return pr.title[:58]
-        if c == AUTHOR_COL:               return get_author(pr)
-        if c == CREATION_DATE_COL:        return fmt_ts(pr.createdAt, c.name in show_time_cols)
-        if c == LAST_COMMENT_TIME_COL:    return fmt_ts(get_last_comment(pr.number), c.name in show_time_cols)
-        if c == MY_LAST_COMMENT_COL:      return fmt_ts(get_last_comment(pr.number, user_only=True), c.name in show_time_cols, blank_if_empty=True)
-        if c == MARK_COL:                 return fmt_ts(marks.get(pr.number), c.name in show_time_cols, blank_if_empty=True)
-        if c == LOC_COL:
-            adds, dels = loc_results.get(pr.number, (0, 0))
-            return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
-        if c == NUM_COMMENTS_COL:
-            return str(count_since(pr.number))
-        if c == REVIEWERS_COL:
-            GREEN, RED, ORANGE, RESET = "\033[32m", "\033[31m", "\033[38;5;208m", "\033[0m"
-            use_color = sys.stdout.isatty()
-            parts = []
-            for r in pr.reviewers:
-                rname = config.author_name(r)
-                state = pr.reviewer_states.get(r, "")
-                if use_color and state == "APPROVED":
-                    parts.append(GREEN + rname + RESET)
-                elif use_color and state == "CHANGES_REQUESTED":
-                    parts.append(RED + rname + RESET)
-                elif use_color and state == "COMMENTED":
-                    parts.append(ORANGE + rname + RESET)
-                else:
-                    parts.append(rname)
-            return ", ".join(parts)
-        if c == AGE_COL:
-            d = days_since(pr.createdAt)
-            return "" if d is None else str(d)
-        if c == LAST_ACTIVITY_COL:
-            d = days_since(last_activity.get(pr.number, ""))
-            return "" if d is None else str(d)
-        if c in (UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL):
-            uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-            val = uc if c == UNRESOLVED_ALL_COL else uh if c == UNRESOLVED_HUMAN_COL else ua
-            return str(val) if val else ""
-        if c == DRAFT_COL:
-            return "true" if pr.isDraft else "false"
-        if c == REVIEW_OUTSTANDING_COL:
-            outstanding = [config.author_name(r) for r in pr.reviewers
-                           if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
-            return ", ".join(outstanding)
-        if c == VALID_COL:
-            _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-            m = _YT_RE.match(pr.title)
-            yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
-            all_approved = bool(pr.reviewers) and all(pr.reviewer_states.get(r, "") == "APPROVED" for r in pr.reviewers)
-            yt_ok = (m is not None and yt_state == "Review") or ("documentation" in pr.labels and m is None)
-            is_valid = bool(pr.reviewers) and (ua == 0 or all_approved) and yt_ok
-            return "true" if is_valid else "false"
-        if c == YOUTRACK_TICKET_COL:
-            m = _YT_RE.match(pr.title)
-            return m.group(1) + '-' + m.group(2) if m else "MISSING"
-        if c == YOUTRACK_PROJECT_COL:
-            m = _YT_RE.match(pr.title)
-            return m.group(1) if m else "MISSING"
-        if c == YOUTRACK_ID_COL:
-            m = _YT_RE.match(pr.title)
-            return m.group(2) if m else "MISSING"
-        if c == YOUTRACK_STATE_COL:
-            m = _YT_RE.match(pr.title)
-            if not m:
-                return "MISSING"
-            tid = m.group(1) + "-" + m.group(2)
-            return youtrack_states.get(tid, "—")
-        if c == WORKDAYS_COL:
-            m = _YT_RE.match(pr.title)
-            if not m:
-                return ""
-            tid = (m.group(1) + "-" + m.group(2)).upper()
-            tid = config.timely_yt_map.get(tid, tid)
-            wd = yt_workdays.get(tid)
-            return "" if wd is None else "%.1f" % wd
-        if c in (COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL): return ""
-        return ""
+    def _col_filter_val(fs: ColumnFilterSpec, ctx: PRContext) -> str:
+        if fs.column == PULL_REQUEST_COL: return str(ctx.pr.number)
+        return cell(ColumnDisplay(fs.column), ctx)
 
-    def _col_filter_val(fs: ColumnFilterSpec, pr: GithubPR) -> str:
-        if fs.column == PULL_REQUEST_COL: return str(pr.number)
-        return cell(ColumnDisplay(fs.column), pr, compute_show_time(pr))
-
-    def _comparison_result(fs: ComparisonFilterSpec, pr: GithubPR) -> bool:
-        lv = timestamp_val(fs.left,  pr) or "1970-01-01T00:00:00Z"
-        rv = timestamp_val(fs.right, pr) or "1970-01-01T00:00:00Z"
+    def _comparison_result(fs: ComparisonFilterSpec, ctx: PRContext) -> bool:
+        lv = _timestamp_val(fs.left,  ctx) or "1970-01-01T00:00:00Z"
+        rv = _timestamp_val(fs.right, ctx) or "1970-01-01T00:00:00Z"
         return (lv > rv if fs.op == ">" else lv < rv if fs.op == "<" else
                 lv >= rv if fs.op == ">=" else lv <= rv if fs.op == "<=" else lv == rv)
 
-    def _pr_passes_filter(pr: GithubPR, fs: FilterSpec) -> bool:
+    def _pr_passes_filter(ctx: PRContext, fs: FilterSpec) -> bool:
         if isinstance(fs, ComparisonFilterSpec):
-            return _comparison_result(fs, pr)
+            return _comparison_result(fs, ctx)
         assert isinstance(fs, ColumnFilterSpec)
         if fs.column == REVIEWERS_COL:
-            reviewer_names = {config.author_name(r) for r in pr.reviewers}
-            matched = (not pr.reviewers and "none" in fs.values) or bool(reviewer_names & fs.values)
+            reviewer_names = {ctx.config.author_name(r) for r in ctx.pr.reviewers}
+            matched = (not ctx.pr.reviewers and "none" in fs.values) or bool(reviewer_names & fs.values)
             return not matched if fs.negate else matched
         if fs.column == REVIEW_OUTSTANDING_COL:
-            outstanding = {config.author_name(r) for r in pr.reviewers
-                           if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")}
+            outstanding = {ctx.config.author_name(r) for r in ctx.pr.reviewers
+                           if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")}
             matched = (not outstanding and "none" in fs.values) or bool(outstanding & fs.values)
             return not matched if fs.negate else matched
-        val = _col_filter_val(fs, pr)
+        val = _col_filter_val(fs, ctx)
         return (val not in fs.values) if fs.negate else (val in fs.values)
 
     def _uses_comment_time(fs: FilterSpec) -> bool:
-        if isinstance(fs, ColumnFilterSpec):    return fs.column == COMMENT_TIME_COL
+        if isinstance(fs, ColumnFilterSpec):     return fs.column == COMMENT_TIME_COL
         if isinstance(fs, ComparisonFilterSpec): return "comment-time" in (fs.left, fs.right)
         return False
 
@@ -314,47 +306,44 @@ def _report_data_lines(
             youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
 
     if pr_filters:
-        all_prs = [pr for pr in all_prs if all(_pr_passes_filter(pr, fs) for fs in pr_filters)]
+        all_prs = [pr for pr in all_prs if all(_pr_passes_filter(make_ctx(pr), fs) for fs in pr_filters)]
 
-    _COMMENT_COLS = frozenset({COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL})
+    _COMMENT_COLS    = frozenset({COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL})
     _comment_in_cols = any(col.column in _COMMENT_COLS for col in cols)
-
-    def comment_cell(col: ColumnDisplay, cr: GithubComment) -> str:
-        if col.column == COMMENT_COL:        return cr.body.split("\n")[0][:70]
-        if col.column == COMMENT_TIME_COL:   return fmt_ts(cr.timestamp, show_time=True)
-        if col.column == COMMENT_AUTHOR_COL: return config.author_name(cr.author)
-        return cell(col, pr, stc)
-
-    def _comment_ts_val(col: str, cr: GithubComment) -> str:
-        if col == "comment-time": return cr.timestamp
-        return timestamp_val(col, pr)
-
-    def _comment_filter_val(fs: FilterSpec, cr: GithubComment) -> bool:
-        if isinstance(fs, ComparisonFilterSpec):
-            lv = _comment_ts_val(fs.left,  cr) or "1970-01-01T00:00:00Z"
-            rv = _comment_ts_val(fs.right, cr) or "1970-01-01T00:00:00Z"
-            return (lv > rv if fs.op == ">" else lv < rv if fs.op == "<" else
-                    lv >= rv if fs.op == ">=" else lv <= rv if fs.op == "<=" else lv == rv)
-        assert isinstance(fs, ColumnFilterSpec)
-        if fs.column == COMMENT_TIME_COL:
-            val = fmt_ts(cr.timestamp, show_time=True)
-            return (val not in fs.values) if fs.negate else (val in fs.values)
-        return _pr_passes_filter(pr, fs)
-
-    def _comment_passes_filters(cr: GithubComment) -> bool:
-        return all(_comment_filter_val(fs, cr) for fs in comment_filters)
-
-    comment_source = rows_all if args.include_pre_mark_commits else rows_marked
+    comment_source   = rows_all if args.include_pre_mark_commits else rows_marked
 
     rows = []
     for pr in all_prs:
-        stc = compute_show_time(pr)
+        ctx = make_ctx(pr)
+        stc = compute_show_time(ctx)
         if _comment_in_cols:
+            def comment_cell(col: ColumnDisplay, cr: GithubComment) -> str:
+                if col.column == COMMENT_COL:        return cr.body.split("\n")[0][:70]
+                if col.column == COMMENT_TIME_COL:   return fmt_ts(cr.timestamp, show_time=True)
+                if col.column == COMMENT_AUTHOR_COL: return ctx.config.author_name(cr.author)
+                return cell(col, ctx, col.name in stc)
+
+            def _comment_ts_val(col: str, cr: GithubComment) -> str:
+                if col == "comment-time": return cr.timestamp
+                return _timestamp_val(col, ctx)
+
+            def _comment_filter_val(fs: FilterSpec, cr: GithubComment) -> bool:
+                if isinstance(fs, ComparisonFilterSpec):
+                    lv = _comment_ts_val(fs.left,  cr) or "1970-01-01T00:00:00Z"
+                    rv = _comment_ts_val(fs.right, cr) or "1970-01-01T00:00:00Z"
+                    return (lv > rv if fs.op == ">" else lv < rv if fs.op == "<" else
+                            lv >= rv if fs.op == ">=" else lv <= rv if fs.op == "<=" else lv == rv)
+                assert isinstance(fs, ColumnFilterSpec)
+                if fs.column == COMMENT_TIME_COL:
+                    val = fmt_ts(cr.timestamp, show_time=True)
+                    return (val not in fs.values) if fs.negate else (val in fs.values)
+                return _pr_passes_filter(ctx, fs)
+
             for cr in comment_source.get(pr.number, []):
-                if not comment_filters or _comment_passes_filters(cr):
+                if not comment_filters or all(_comment_filter_val(fs, cr) for fs in comment_filters):
                     rows.append([comment_cell(col, cr) for col in cols])
         else:
-            rows.append([cell(col, pr, stc) for col in cols])
+            rows.append([cell(col, ctx, col.name in stc) for col in cols])
     return rows
 
 
