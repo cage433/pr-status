@@ -1,5 +1,5 @@
 import re
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 
 from .column import Column, _ListError
@@ -7,6 +7,9 @@ from .date_utils import parse_date_literal
 
 
 class FilterSpec(ABC):
+    @property
+    @abstractmethod
+    def all_cols(self) -> set[Column]: ...
     @staticmethod
     def resolve(spec: str) -> "FilterSpec":
         spec = spec.strip()
@@ -52,9 +55,18 @@ class ColumnFilterSpec(FilterSpec):
     values: set[str]
     negate: bool
 
+    @property
+    def all_cols(self) -> set[Column]:
+        return {self.column}
+
 
 @dataclass
 class ComparisonFilterSpec(FilterSpec):
     left:  str
     op:    str
     right: str
+
+    @property
+    def all_cols(self) -> set[Column]:
+        return {col for side in (self.left, self.right)
+                if (col := Column.col_from_name(side)) and col.is_timestamp}
