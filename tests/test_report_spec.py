@@ -2,7 +2,7 @@ import unittest
 
 from pr_status.report_args import ReportArgs
 from pr_status.report_spec import (
-    ColSpec, Comparison, PlainColumn, ReportSpec, _ListError,
+    ColSpec, ComparisonColSpec, PlainColSpec, ReportSpec, _ListError,
     col_header, col_width,
 )
 
@@ -19,40 +19,40 @@ class TestResolveColumns(unittest.TestCase):
 
     def test_default_columns_when_empty(self):
         spec = resolve()
-        self.assertEqual(spec.cols, [PlainColumn("pull-request"), PlainColumn("title"), PlainColumn("author")])
+        self.assertEqual(spec.cols, [PlainColSpec("pull-request"), PlainColSpec("title"), PlainColSpec("author")])
 
     def test_explicit_columns(self):
         spec = resolve("title,author")
-        self.assertEqual(spec.cols, [PlainColumn("title"), PlainColumn("author")])
+        self.assertEqual(spec.cols, [PlainColSpec("title"), PlainColSpec("author")])
 
     def test_column_alias(self):
         spec = resolve("pr,nc,lct,mct,cd,mk,c")
         self.assertEqual(spec.cols, [
-            PlainColumn("pull-request"), PlainColumn("num-comments"),
-            PlainColumn("last-comment-time"), PlainColumn("my-last-comment-time"),
-            PlainColumn("creation-date"), PlainColumn("mark"), PlainColumn("comment"),
+            PlainColSpec("pull-request"), PlainColSpec("num-comments"),
+            PlainColSpec("last-comment-time"), PlainColSpec("my-last-comment-time"),
+            PlainColSpec("creation-date"), PlainColSpec("mark"), PlainColSpec("comment"),
         ])
 
     def test_alias_takes_priority_over_prefix(self):
         # 'a' is a prefix of both 'author' and 'age', but resolves unambiguously via alias
         spec = resolve("a")
-        self.assertEqual(spec.cols, [PlainColumn("author")])
+        self.assertEqual(spec.cols, [PlainColSpec("author")])
 
     def test_column_prefix_match(self):
         spec = resolve("tit,auth,loc")
-        self.assertEqual(spec.cols, [PlainColumn("title"), PlainColumn("author"), PlainColumn("loc")])
+        self.assertEqual(spec.cols, [PlainColSpec("title"), PlainColSpec("author"), PlainColSpec("loc")])
 
     def test_column_name_case_insensitive(self):
         spec = resolve("TITLE,Author")
-        self.assertEqual(spec.cols, [PlainColumn("title"), PlainColumn("author")])
+        self.assertEqual(spec.cols, [PlainColSpec("title"), PlainColSpec("author")])
 
     def test_trailing_underscore_sets_long_name(self):
         spec = resolve("nc_")
-        self.assertEqual(spec.cols, [PlainColumn("num-comments", long_name=True)])
+        self.assertEqual(spec.cols, [PlainColSpec("num-comments", long_name=True)])
 
     def test_trailing_underscore_works_with_alias(self):
         spec = resolve("cd_,author")
-        self.assertEqual(spec.cols, [PlainColumn("creation-date", long_name=True), PlainColumn("author")])
+        self.assertEqual(spec.cols, [PlainColSpec("creation-date", long_name=True), PlainColSpec("author")])
 
     def test_unknown_column_raises(self):
         with self.assertRaises(_ListError):
@@ -65,16 +65,16 @@ class TestResolveColumns(unittest.TestCase):
 
     def test_comparison_column(self):
         spec = resolve("lct>cd")
-        self.assertEqual(spec.cols, [Comparison("last-comment-time", ">", "creation-date")])
+        self.assertEqual(spec.cols, [ComparisonColSpec("last-comment-time", ">", "creation-date")])
 
     def test_all_comparison_operators(self):
         for op in (">", "<", ">=", "<=", "=="):
             spec = resolve("lct%scd" % op)
-            self.assertEqual(spec.cols, [Comparison("last-comment-time", op, "creation-date")])
+            self.assertEqual(spec.cols, [ComparisonColSpec("last-comment-time", op, "creation-date")])
 
     def test_comparison_with_date_literal(self):
         spec = resolve("lct>2024-01-15")
-        self.assertEqual(spec.cols, [Comparison("last-comment-time", ">", "2024-01-15T00:00:00Z")])
+        self.assertEqual(spec.cols, [ComparisonColSpec("last-comment-time", ">", "2024-01-15T00:00:00Z")])
 
     def test_comparison_with_non_timestamp_col_raises(self):
         with self.assertRaises(_ListError):
@@ -82,7 +82,7 @@ class TestResolveColumns(unittest.TestCase):
 
     def test_whitespace_around_columns_ignored(self):
         spec = resolve(" title , author ")
-        self.assertEqual(spec.cols, [PlainColumn("title"), PlainColumn("author")])
+        self.assertEqual(spec.cols, [PlainColSpec("title"), PlainColSpec("author")])
 
 
 class TestResolveSort(unittest.TestCase):
@@ -126,7 +126,7 @@ class TestResolveFilters(unittest.TestCase):
         spec = resolve(filters=["author=alice"])
         self.assertEqual(len(spec.filters), 1)
         col, vals, neg = spec.filters[0]
-        self.assertEqual(col, PlainColumn("author"))
+        self.assertEqual(col, PlainColSpec("author"))
         self.assertEqual(vals, {"alice"})
         self.assertFalse(neg)
 
@@ -144,7 +144,7 @@ class TestResolveFilters(unittest.TestCase):
         spec = resolve(filters=["lct>cd"])
         self.assertEqual(len(spec.filters), 1)
         col, vals, neg = spec.filters[0]
-        self.assertEqual(col, Comparison("last-comment-time", ">", "creation-date"))
+        self.assertEqual(col, ComparisonColSpec("last-comment-time", ">", "creation-date"))
         self.assertEqual(vals, {"true"})
         self.assertFalse(neg)
 
@@ -155,7 +155,7 @@ class TestResolveFilters(unittest.TestCase):
     def test_filter_col_alias(self):
         spec = resolve(filters=["pr=42"])
         col, _, _ = spec.filters[0]
-        self.assertEqual(col, PlainColumn("pull-request"))
+        self.assertEqual(col, PlainColSpec("pull-request"))
 
     def test_empty_filter_string_ignored(self):
         spec = resolve(filters=[""])
@@ -164,7 +164,7 @@ class TestResolveFilters(unittest.TestCase):
     def test_filter_not_equal(self):
         spec = resolve(filters=["author!=alice"])
         col, vals, neg = spec.filters[0]
-        self.assertEqual(col, PlainColumn("author"))
+        self.assertEqual(col, PlainColSpec("author"))
         self.assertEqual(vals, {"alice"})
         self.assertTrue(neg)
 
@@ -212,49 +212,49 @@ class TestColHeader(unittest.TestCase):
             "mark": "MARK", "comment": "COMMENT",
         }
         for col, expected in cases.items():
-            self.assertEqual(col_header(PlainColumn(col)), expected)
+            self.assertEqual(col_header(PlainColSpec(col)), expected)
 
     def test_long_name_header_is_column_name_uppercased(self):
-        self.assertEqual(col_header(PlainColumn("num-comments", long_name=True)), "NUM-COMMENTS")
-        self.assertEqual(col_header(PlainColumn("creation-date", long_name=True)), "CREATION-DATE")
-        self.assertEqual(col_header(PlainColumn("unresolved (all)", long_name=True)), "UNRESOLVED (ALL)")
+        self.assertEqual(col_header(PlainColSpec("num-comments", long_name=True)), "NUM-COMMENTS")
+        self.assertEqual(col_header(PlainColSpec("creation-date", long_name=True)), "CREATION-DATE")
+        self.assertEqual(col_header(PlainColSpec("unresolved (all)", long_name=True)), "UNRESOLVED (ALL)")
 
     def test_comparison_header_uses_abbrevs(self):
-        c = Comparison("last-comment-time", ">", "creation-date")
+        c = ComparisonColSpec("last-comment-time", ">", "creation-date")
         self.assertEqual(col_header(c), "LCT>CD")
 
     def test_comparison_header_with_date_literal(self):
-        c = Comparison("last-comment-time", ">", "2024-01-15T00:00:00Z")
+        c = ComparisonColSpec("last-comment-time", ">", "2024-01-15T00:00:00Z")
         self.assertEqual(col_header(c), "LCT>2024-01-15")
 
     def test_comparison_header_unknown_side_truncated(self):
         # a date literal longer than 10 chars uses first 10 chars as abbreviation
-        c = Comparison("mark", ">=", "2024-06-01T00:00:00Z")
+        c = ComparisonColSpec("mark", ">=", "2024-06-01T00:00:00Z")
         self.assertEqual(col_header(c), "MK>=2024-06-01")
 
 
 class TestColWidth(unittest.TestCase):
 
     def test_plain_column_widths(self):
-        self.assertEqual(col_width(PlainColumn("title")), 60)
-        self.assertEqual(col_width(PlainColumn("author")), 15)
-        self.assertEqual(col_width(PlainColumn("num-comments")), 4)
+        self.assertEqual(col_width(PlainColSpec("title")), 60)
+        self.assertEqual(col_width(PlainColSpec("author")), 15)
+        self.assertEqual(col_width(PlainColSpec("num-comments")), 4)
 
     def test_long_name_width_at_least_header_length(self):
-        col = PlainColumn("num-comments", long_name=True)
+        col = PlainColSpec("num-comments", long_name=True)
         self.assertGreaterEqual(col_width(col), len("NUM-COMMENTS"))
 
     def test_long_name_width_not_less_than_data_width(self):
-        col = PlainColumn("creation-date", long_name=True)
-        self.assertGreaterEqual(col_width(col), col_width(PlainColumn("creation-date")))
+        col = PlainColSpec("creation-date", long_name=True)
+        self.assertGreaterEqual(col_width(col), col_width(PlainColSpec("creation-date")))
 
     def test_comparison_width_at_least_5(self):
         # "false" is 5 chars — width must accommodate it
-        c = Comparison("mark", ">", "creation-date")
+        c = ComparisonColSpec("mark", ">", "creation-date")
         self.assertGreaterEqual(col_width(c), 5)
 
     def test_comparison_width_matches_header_length(self):
-        c = Comparison("last-comment-time", ">", "creation-date")
+        c = ComparisonColSpec("last-comment-time", ">", "creation-date")
         self.assertEqual(col_width(c), len(col_header(c)))
 
 

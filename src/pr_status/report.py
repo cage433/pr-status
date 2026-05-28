@@ -37,7 +37,7 @@ from .report_args import ReportArgs
 from . import youtrack
 from .timely_cache import load_yt_workdays
 from .report_spec import (
-    ColSpec, PlainColumn, Comparison, _ListError,
+    ColSpec, PlainColSpec, ComparisonColSpec, _ListError,
     TIMESTAMP_COLS, col_header, col_header_lines, col_is_numeric, col_width,
     ReportSpec,
 )
@@ -99,7 +99,7 @@ def _report_data_lines(
     def compute_show_time(pr: GithubPR) -> set[str]:
         date_to_cols: dict[str, list[str]] = {}
         for spec in cols:
-            if not isinstance(spec, PlainColumn) or spec.name not in TIMESTAMP_COLS: continue
+            if not isinstance(spec, PlainColSpec) or spec.name not in TIMESTAMP_COLS: continue
             val = timestamp_val(spec.name, pr)
             if not val: continue
             date_to_cols.setdefault(val[:10], []).append(spec.name)
@@ -185,7 +185,7 @@ def _report_data_lines(
         pr: GithubPR,
         show_time_cols: frozenset[str] = frozenset(),
     ) -> str:
-        if isinstance(spec, Comparison):
+        if isinstance(spec, ComparisonColSpec):
             lv = timestamp_val(spec.left,  pr) or "1970-01-01T00:00:00Z"
             rv = timestamp_val(spec.right, pr) or "1970-01-01T00:00:00Z"
             result = (lv > rv if spec.op == ">" else lv < rv if spec.op == "<" else
@@ -271,15 +271,15 @@ def _report_data_lines(
         return ""
 
     def _filter_val(fc: ColSpec, pr: GithubPR) -> str:
-        if isinstance(fc, PlainColumn) and fc.name == "pull-request": return str(pr.number)
+        if isinstance(fc, PlainColSpec) and fc.name == "pull-request": return str(pr.number)
         return cell(fc, pr, compute_show_time(pr))
 
     def _pr_passes_filter(pr: GithubPR, fc: ColSpec, fv: set[str], neg: bool) -> bool:
-        if isinstance(fc, PlainColumn) and fc.name == "reviewers":
+        if isinstance(fc, PlainColSpec) and fc.name == "reviewers":
             reviewer_names = {config.author_name(r) for r in pr.reviewers}
             matched = (not pr.reviewers and "none" in fv) or bool(reviewer_names & fv)
             return not matched if neg else matched
-        if isinstance(fc, PlainColumn) and fc.name == "review-outstanding":
+        if isinstance(fc, PlainColSpec) and fc.name == "review-outstanding":
             outstanding = {config.author_name(r) for r in pr.reviewers
                            if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")}
             matched = (not outstanding and "none" in fv) or bool(outstanding & fv)
@@ -288,8 +288,8 @@ def _report_data_lines(
         return (val not in fv) if neg else (val in fv)
 
     def _uses_comment_time(fc: ColSpec) -> bool:
-        if isinstance(fc, PlainColumn):   return fc.name == "comment-time"
-        if isinstance(fc, Comparison):    return "comment-time" in (fc.left, fc.right)
+        if isinstance(fc, PlainColSpec):   return fc.name == "comment-time"
+        if isinstance(fc, ComparisonColSpec):    return "comment-time" in (fc.left, fc.right)
         return False
 
     pr_filters      = [(fc, fv, neg) for fc, fv, neg in filters if not _uses_comment_time(fc)]
@@ -305,10 +305,10 @@ def _report_data_lines(
                    if all(_pr_passes_filter(pr, fc, fv, neg) for fc, fv, neg in pr_filters)]
 
     _COMMENT_NAMES = frozenset({"comment", "comment-time", "comment-author"})
-    _comment_in_cols = any(isinstance(c, PlainColumn) and c.name in _COMMENT_NAMES for c in cols)
+    _comment_in_cols = any(isinstance(c, PlainColSpec) and c.name in _COMMENT_NAMES for c in cols)
 
     def comment_cell(c: ColSpec, cr: GithubComment) -> str:
-        if isinstance(c, PlainColumn):
+        if isinstance(c, PlainColSpec):
             if c.name == "comment":        return cr.body.split("\n")[0][:70]
             if c.name == "comment-time":   return fmt_ts(cr.timestamp, show_time=True)
             if c.name == "comment-author": return config.author_name(cr.author)
@@ -319,13 +319,13 @@ def _report_data_lines(
         return timestamp_val(col, pr)
 
     def _comment_filter_val(fc: ColSpec, cr: GithubComment) -> str:
-        if isinstance(fc, Comparison):
+        if isinstance(fc, ComparisonColSpec):
             lv = _comment_ts_val(fc.left,  cr) or "1970-01-01T00:00:00Z"
             rv = _comment_ts_val(fc.right, cr) or "1970-01-01T00:00:00Z"
             result = (lv > rv if fc.op == ">" else lv < rv if fc.op == "<" else
                       lv >= rv if fc.op == ">=" else lv <= rv if fc.op == "<=" else lv == rv)
             return "true" if result else "false"
-        if isinstance(fc, PlainColumn) and fc.name == "comment-time":
+        if isinstance(fc, PlainColSpec) and fc.name == "comment-time":
             return fmt_ts(cr.timestamp, show_time=True)
         return _filter_val(fc, pr)
 
@@ -389,7 +389,7 @@ def _render_report(
                 t = grouped[key][j]
                 if t is not None:
                     c = cols[ni]
-                    new_row[ni] = ("%.1f" % t) if isinstance(c, PlainColumn) and c.name == "workdays" else str(int(t))
+                    new_row[ni] = ("%.1f" % t) if isinstance(c, PlainColSpec) and c.name == "workdays" else str(int(t))
             rows.append(new_row)
 
     hdr_lines = [col_header_lines(c) for c in cols]
@@ -434,6 +434,6 @@ def _render_report(
                     total = (total or 0.0) + float(v)
             if total is not None:
                 c = cols[i]
-                totals[i] = ("%.1f" % total) if isinstance(c, PlainColumn) and c.name == "workdays" else str(int(total))
+                totals[i] = ("%.1f" % total) if isinstance(c, PlainColSpec) and c.name == "workdays" else str(int(total))
         print(fmt_row(["-" * widths[i] for i in range(len(cols))]))
         print(fmt_row(totals))

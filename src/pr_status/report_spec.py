@@ -12,12 +12,12 @@ class ColSpec(ABC):
     pass
 
 @dataclass
-class PlainColumn(ColSpec):
+class PlainColSpec(ColSpec):
     name: str
     long_name: bool = False
 
 @dataclass
-class Comparison(ColSpec):
+class ComparisonColSpec(ColSpec):
     left: str
     op: str
     right: str
@@ -69,22 +69,22 @@ TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)
 
 
 def col_header(spec: ColSpec) -> str:
-    if isinstance(spec, Comparison):
+    if isinstance(spec, ComparisonColSpec):
         def _abbrev(s: str) -> str:
             col = _COL_BY_NAME.get(s)
             return col.abbrev if col and col.abbrev else s[:10]
         return "%s%s%s" % (_abbrev(spec.left), spec.op, _abbrev(spec.right))
-    if isinstance(spec, PlainColumn) and spec.long_name:
+    if isinstance(spec, PlainColSpec) and spec.long_name:
         return spec.name.upper()
     return _COL_BY_NAME[spec.name].header
 
 
 def col_is_numeric(spec: ColSpec) -> bool:
-    return isinstance(spec, PlainColumn) and _COL_BY_NAME[spec.name].is_numeric
+    return isinstance(spec, PlainColSpec) and _COL_BY_NAME[spec.name].is_numeric
 
 
 def col_header_lines(spec: ColSpec) -> list[str]:
-    if isinstance(spec, PlainColumn) and spec.long_name:
+    if isinstance(spec, PlainColSpec) and spec.long_name:
         col = _COL_BY_NAME[spec.name]
         if col.multi_line_header:
             return list(col.multi_line_header)
@@ -92,10 +92,10 @@ def col_header_lines(spec: ColSpec) -> list[str]:
 
 
 def col_width(spec: ColSpec) -> int:
-    if isinstance(spec, Comparison):
+    if isinstance(spec, ComparisonColSpec):
         return max(len(col_header(spec)), 5)  # 5 for "false"
     col = _COL_BY_NAME[spec.name]
-    if isinstance(spec, PlainColumn) and spec.long_name:
+    if isinstance(spec, PlainColSpec) and spec.long_name:
         lines = col_header_lines(spec)
         return max(col.width, max(len(line) for line in lines))
     return col.width
@@ -137,11 +137,11 @@ class ReportSpec:
                     col = _COL_BY_NAME.get(val)
                     if col and not col.is_timestamp:
                         raise _ListError("Column %r is not a timestamp column" % val)
-                return Comparison(left=left, op=op, right=right)
+                return ComparisonColSpec(left=left, op=op, right=right)
             long_name = spec.endswith("_")
             if long_name:
                 spec = spec[:-1].rstrip()
-            return PlainColumn(resolve_col(spec), long_name=long_name)
+            return PlainColSpec(resolve_col(spec), long_name=long_name)
 
         def parse_sort_item(s: str) -> tuple[str, bool]:
             s = s.strip()
@@ -149,7 +149,7 @@ class ReportSpec:
                 return (resolve_col(s[:-2].rstrip()), True)
             return (resolve_col(s), False)
 
-        cols      = [parse_col_spec(c) for c in args.columns.split(",") if c.strip()] if args.columns else [PlainColumn("pull-request"), PlainColumn("title"), PlainColumn("author")]
+        cols      = [parse_col_spec(c) for c in args.columns.split(",") if c.strip()] if args.columns else [PlainColSpec("pull-request"), PlainColSpec("title"), PlainColSpec("author")]
         sort_cols = [parse_sort_item(c) for c in args.sort.split(",") if c.strip()] if args.sort else []
 
         filters: list[tuple[ColSpec, set[str], bool]] = []
@@ -163,7 +163,7 @@ class ReportSpec:
             fparts = re.split(r'(?<![><=!])=(?!=)', fspec, maxsplit=1)
             if len(fparts) == 1:
                 col = parse_col_spec(fparts[0].strip())
-                if not isinstance(col, Comparison):
+                if not isinstance(col, ComparisonColSpec):
                     raise _ListError("Invalid --filter (expected col=val,...): %r" % fspec)
                 filters.append((col, {"true"}, False))
             else:
@@ -172,7 +172,7 @@ class ReportSpec:
         def _referenced_cols() -> set[str]:
             names: set[str] = set()
             for s in cols + [fc for fc, _, _ in filters]:
-                if isinstance(s, Comparison):
+                if isinstance(s, ComparisonColSpec):
                     for side in (s.left, s.right):
                         col = _COL_BY_NAME.get(side)
                         if col and col.is_timestamp:
