@@ -27,7 +27,7 @@ def _rjust_ansi(s: str, width: int) -> str:
 def _visible_len(s: str) -> int:
     return len(_ANSI_RE.sub('', s))
 
-from .column import Column, FilterSpec
+from .column import Column, ColumnDisplay, FilterSpec
 from .config import Config
 from .date_utils import fmt_ts, days_since
 from .github_data import GithubComment, GithubData, GithubPR
@@ -41,6 +41,13 @@ from .report_spec import (
     ColumnFilterSpec, ComparisonFilterSpec, _ListError,
     TIMESTAMP_COLS,
     ReportSpec,
+    PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, CREATION_DATE_COL,
+    LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL, MARK_COL, LOC_COL,
+    NUM_COMMENTS_COL, REVIEWERS_COL, AGE_COL, LAST_ACTIVITY_COL,
+    UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL,
+    DRAFT_COL, REVIEW_OUTSTANDING_COL, VALID_COL,
+    YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
+    WORKDAYS_COL, COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
 )
 
 
@@ -51,7 +58,7 @@ def run_report(
 ) -> None:
     try:
         spec = ReportSpec.resolve(args)
-        raw  = GithubRawData.fetch(config, spec.all_cols)
+        raw  = GithubRawData.fetch(config, {col.name for col in spec.all_cols})
         data = GithubData.from_raw(config, marks, args, raw)
         _render_report(config, marks, args, spec, data)
     except _ListError as e:
@@ -75,7 +82,7 @@ def _report_data_lines(
     unresolved_counts = data.unresolved_counts
     last_activity     = data.last_activity
     youtrack_states   = data.youtrack_states
-    yt_workdays: dict[str, float] = load_yt_workdays() if "workdays" in spec.all_cols else {}
+    yt_workdays: dict[str, float] = load_yt_workdays() if WORKDAYS_COL in spec.all_cols else {}
 
     def get_author(pr: GithubPR) -> str:
         return config.author_name(pr.author)
@@ -112,43 +119,43 @@ def _report_data_lines(
             for col, rev in sort_cols:
                 def k(v: Any) -> Any:
                     return _Rev(v) if rev else v
-                if col == "pull-request":
+                if col == PULL_REQUEST_COL:
                     key.append(k(pr.number))
-                elif col == "title":
+                elif col == TITLE_COL:
                     key.append(k(pr.title.lower()))
-                elif col == "author":
+                elif col == AUTHOR_COL:
                     key.append(k(get_author(pr).lower()))
-                elif col == "creation-date":
+                elif col == CREATION_DATE_COL:
                     key.append(k(pr.createdAt or ""))
-                elif col == "last-comment-time":
+                elif col == LAST_COMMENT_TIME_COL:
                     key.append(k(get_last_comment(pr.number) or ""))
-                elif col == "my-last-comment-time":
+                elif col == MY_LAST_COMMENT_COL:
                     key.append(k(get_last_comment(pr.number, user_only=True) or ""))
-                elif col == "mark":
+                elif col == MARK_COL:
                     key.append(k(marks.get(pr.number) or ""))
-                elif col == "loc":
+                elif col == LOC_COL:
                     adds, dels = loc_results.get(pr.number, (0, 0))
                     key.append(k(adds + dels))
-                elif col == "num-comments":
+                elif col == NUM_COMMENTS_COL:
                     key.append(k(count_since(pr.number)))
-                elif col == "age":
+                elif col == AGE_COL:
                     key.append(k(days_since(pr.createdAt) or 0))
-                elif col == "last-activity":
+                elif col == LAST_ACTIVITY_COL:
                     d = days_since(last_activity.get(pr.number, ""))
                     key.append(k(-1 if d is None else d))
-                elif col in ("unresolved (all)", "unresolved (human)", "unresolved (ai)"):
+                elif col in (UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL):
                     uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-                    val = uc if col == "unresolved (all)" else uh if col == "unresolved (human)" else ua
+                    val = uc if col == UNRESOLVED_ALL_COL else uh if col == UNRESOLVED_HUMAN_COL else ua
                     key.append(k(val))
-                elif col == "reviewers":
+                elif col == REVIEWERS_COL:
                     key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
-                elif col == "draft":
+                elif col == DRAFT_COL:
                     key.append(k(pr.isDraft))
-                elif col == "review-outstanding":
+                elif col == REVIEW_OUTSTANDING_COL:
                     outstanding = [config.author_name(r) for r in pr.reviewers
                                    if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
                     key.append(k(", ".join(outstanding).lower()))
-                elif col == "valid":
+                elif col == VALID_COL:
                     _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
                     m = _YT_RE.match(pr.title)
                     yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
@@ -156,20 +163,20 @@ def _report_data_lines(
                     yt_ok = (m is not None and yt_state == "Review") or ("documentation" in pr.labels and m is None)
                     is_valid = bool(pr.reviewers) and (ua == 0 or all_approved) and yt_ok
                     key.append(k(is_valid))
-                elif col == "youtrack-ticket":
+                elif col == YOUTRACK_TICKET_COL:
                     m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) + '-' + m.group(2) if m else "MISSING"))
-                elif col == "youtrack-project":
+                elif col == YOUTRACK_PROJECT_COL:
                     m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) if m else "MISSING"))
-                elif col == "youtrack-id":
+                elif col == YOUTRACK_ID_COL:
                     m = _YT_RE.match(pr.title)
                     key.append(k(int(m.group(2)) if m else 10**18))
-                elif col == "youtrack-state":
+                elif col == YOUTRACK_STATE_COL:
                     m = _YT_RE.match(pr.title)
                     tid = m.group(1) + "-" + m.group(2) if m else None
                     key.append(k(youtrack_states.get(tid, "MISSING") if tid else "MISSING"))
-                elif col == "workdays":
+                elif col == WORKDAYS_COL:
                     m = _YT_RE.match(pr.title)
                     if m:
                         tid = (m.group(1) + "-" + m.group(2)).upper()
@@ -182,24 +189,24 @@ def _report_data_lines(
         all_prs.sort(key=sort_key)
 
     def cell(
-        col: Column,
+        col: ColumnDisplay,
         pr: GithubPR,
         show_time_cols: frozenset[str] = frozenset(),
     ) -> str:
-        name = col.name
-        if name == "pull-request":         return "#%-5s" % pr.number
-        if name == "title":                return pr.title[:58]
-        if name == "author":               return get_author(pr)
-        if name == "creation-date":        return fmt_ts(pr.createdAt, name in show_time_cols)
-        if name == "last-comment-time":    return fmt_ts(get_last_comment(pr.number), name in show_time_cols)
-        if name == "my-last-comment-time": return fmt_ts(get_last_comment(pr.number, user_only=True), name in show_time_cols, blank_if_empty=True)
-        if name == "mark":                 return fmt_ts(marks.get(pr.number), name in show_time_cols, blank_if_empty=True)
-        if name == "loc":
+        c = col.column
+        if c == PULL_REQUEST_COL:         return "#%-5s" % pr.number
+        if c == TITLE_COL:                return pr.title[:58]
+        if c == AUTHOR_COL:               return get_author(pr)
+        if c == CREATION_DATE_COL:        return fmt_ts(pr.createdAt, c.name in show_time_cols)
+        if c == LAST_COMMENT_TIME_COL:    return fmt_ts(get_last_comment(pr.number), c.name in show_time_cols)
+        if c == MY_LAST_COMMENT_COL:      return fmt_ts(get_last_comment(pr.number, user_only=True), c.name in show_time_cols, blank_if_empty=True)
+        if c == MARK_COL:                 return fmt_ts(marks.get(pr.number), c.name in show_time_cols, blank_if_empty=True)
+        if c == LOC_COL:
             adds, dels = loc_results.get(pr.number, (0, 0))
             return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
-        if name == "num-comments":
+        if c == NUM_COMMENTS_COL:
             return str(count_since(pr.number))
-        if name == "reviewers":
+        if c == REVIEWERS_COL:
             GREEN, RED, ORANGE, RESET = "\033[32m", "\033[31m", "\033[38;5;208m", "\033[0m"
             use_color = sys.stdout.isatty()
             parts = []
@@ -215,23 +222,23 @@ def _report_data_lines(
                 else:
                     parts.append(rname)
             return ", ".join(parts)
-        if name == "age":
+        if c == AGE_COL:
             d = days_since(pr.createdAt)
             return "" if d is None else str(d)
-        if name == "last-activity":
+        if c == LAST_ACTIVITY_COL:
             d = days_since(last_activity.get(pr.number, ""))
             return "" if d is None else str(d)
-        if name in ("unresolved (all)", "unresolved (human)", "unresolved (ai)"):
+        if c in (UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL):
             uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-            val = uc if name == "unresolved (all)" else uh if name == "unresolved (human)" else ua
+            val = uc if c == UNRESOLVED_ALL_COL else uh if c == UNRESOLVED_HUMAN_COL else ua
             return str(val) if val else ""
-        if name == "draft":
+        if c == DRAFT_COL:
             return "true" if pr.isDraft else "false"
-        if name == "review-outstanding":
+        if c == REVIEW_OUTSTANDING_COL:
             outstanding = [config.author_name(r) for r in pr.reviewers
                            if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
             return ", ".join(outstanding)
-        if name == "valid":
+        if c == VALID_COL:
             _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
             m = _YT_RE.match(pr.title)
             yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
@@ -239,22 +246,22 @@ def _report_data_lines(
             yt_ok = (m is not None and yt_state == "Review") or ("documentation" in pr.labels and m is None)
             is_valid = bool(pr.reviewers) and (ua == 0 or all_approved) and yt_ok
             return "true" if is_valid else "false"
-        if name == "youtrack-ticket":
+        if c == YOUTRACK_TICKET_COL:
             m = _YT_RE.match(pr.title)
             return m.group(1) + '-' + m.group(2) if m else "MISSING"
-        if name == "youtrack-project":
+        if c == YOUTRACK_PROJECT_COL:
             m = _YT_RE.match(pr.title)
             return m.group(1) if m else "MISSING"
-        if name == "youtrack-id":
+        if c == YOUTRACK_ID_COL:
             m = _YT_RE.match(pr.title)
             return m.group(2) if m else "MISSING"
-        if name == "youtrack-state":
+        if c == YOUTRACK_STATE_COL:
             m = _YT_RE.match(pr.title)
             if not m:
                 return "MISSING"
             tid = m.group(1) + "-" + m.group(2)
             return youtrack_states.get(tid, "—")
-        if name == "workdays":
+        if c == WORKDAYS_COL:
             m = _YT_RE.match(pr.title)
             if not m:
                 return ""
@@ -262,12 +269,12 @@ def _report_data_lines(
             tid = config.timely_yt_map.get(tid, tid)
             wd = yt_workdays.get(tid)
             return "" if wd is None else "%.1f" % wd
-        if name in ("comment", "comment-time", "comment-author"): return ""
+        if c in (COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL): return ""
         return ""
 
     def _col_filter_val(fs: ColumnFilterSpec, pr: GithubPR) -> str:
-        if fs.column.name == "pull-request": return str(pr.number)
-        return cell(fs.column, pr, compute_show_time(pr))
+        if fs.column == PULL_REQUEST_COL: return str(pr.number)
+        return cell(ColumnDisplay(fs.column), pr, compute_show_time(pr))
 
     def _comparison_result(fs: ComparisonFilterSpec, pr: GithubPR) -> bool:
         lv = timestamp_val(fs.left,  pr) or "1970-01-01T00:00:00Z"
@@ -279,11 +286,11 @@ def _report_data_lines(
         if isinstance(fs, ComparisonFilterSpec):
             return _comparison_result(fs, pr)
         assert isinstance(fs, ColumnFilterSpec)
-        if fs.column.name == "reviewers":
+        if fs.column == REVIEWERS_COL:
             reviewer_names = {config.author_name(r) for r in pr.reviewers}
             matched = (not pr.reviewers and "none" in fs.values) or bool(reviewer_names & fs.values)
             return not matched if fs.negate else matched
-        if fs.column.name == "review-outstanding":
+        if fs.column == REVIEW_OUTSTANDING_COL:
             outstanding = {config.author_name(r) for r in pr.reviewers
                            if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")}
             matched = (not outstanding and "none" in fs.values) or bool(outstanding & fs.values)
@@ -292,14 +299,14 @@ def _report_data_lines(
         return (val not in fs.values) if fs.negate else (val in fs.values)
 
     def _uses_comment_time(fs: FilterSpec) -> bool:
-        if isinstance(fs, ColumnFilterSpec):    return fs.column.name == "comment-time"
+        if isinstance(fs, ColumnFilterSpec):    return fs.column == COMMENT_TIME_COL
         if isinstance(fs, ComparisonFilterSpec): return "comment-time" in (fs.left, fs.right)
         return False
 
     pr_filters      = [fs for fs in filters if not _uses_comment_time(fs)]
     comment_filters = [fs for fs in filters if     _uses_comment_time(fs)]
 
-    if spec.all_cols & {"youtrack-state", "valid"} and config.youtrack_url and config.youtrack_token:
+    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and config.youtrack_url and config.youtrack_token:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
             youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
@@ -307,13 +314,13 @@ def _report_data_lines(
     if pr_filters:
         all_prs = [pr for pr in all_prs if all(_pr_passes_filter(pr, fs) for fs in pr_filters)]
 
-    _COMMENT_NAMES = frozenset({"comment", "comment-time", "comment-author"})
-    _comment_in_cols = any(col.name in _COMMENT_NAMES for col in cols)
+    _COMMENT_COLS = frozenset({COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL})
+    _comment_in_cols = any(col.column in _COMMENT_COLS for col in cols)
 
-    def comment_cell(col: Column, cr: GithubComment) -> str:
-        if col.name == "comment":        return cr.body.split("\n")[0][:70]
-        if col.name == "comment-time":   return fmt_ts(cr.timestamp, show_time=True)
-        if col.name == "comment-author": return config.author_name(cr.author)
+    def comment_cell(col: ColumnDisplay, cr: GithubComment) -> str:
+        if col.column == COMMENT_COL:        return cr.body.split("\n")[0][:70]
+        if col.column == COMMENT_TIME_COL:   return fmt_ts(cr.timestamp, show_time=True)
+        if col.column == COMMENT_AUTHOR_COL: return config.author_name(cr.author)
         return cell(col, pr, stc)
 
     def _comment_ts_val(col: str, cr: GithubComment) -> str:
@@ -327,7 +334,7 @@ def _report_data_lines(
             return (lv > rv if fs.op == ">" else lv < rv if fs.op == "<" else
                     lv >= rv if fs.op == ">=" else lv <= rv if fs.op == "<=" else lv == rv)
         assert isinstance(fs, ColumnFilterSpec)
-        if fs.column.name == "comment-time":
+        if fs.column == COMMENT_TIME_COL:
             val = fmt_ts(cr.timestamp, show_time=True)
             return (val not in fs.values) if fs.negate else (val in fs.values)
         return _pr_passes_filter(pr, fs)
@@ -389,7 +396,7 @@ def _render_report(
                 t = grouped[key][j]
                 if t is not None:
                     c = cols[ni]
-                    new_row[ni] = ("%.1f" % t) if c.name == "workdays" else str(int(t))
+                    new_row[ni] = ("%.1f" % t) if c.column == WORKDAYS_COL else str(int(t))
             rows.append(new_row)
 
     hdr_lines = [c.header_lines for c in cols]
@@ -434,6 +441,6 @@ def _render_report(
                     total = (total or 0.0) + float(v)
             if total is not None:
                 c = cols[i]
-                totals[i] = ("%.1f" % total) if c.name == "workdays" else str(int(total))
+                totals[i] = ("%.1f" % total) if c.column == WORKDAYS_COL else str(int(total))
         print(fmt_row(["-" * widths[i] for i in range(len(cols))]))
         print(fmt_row(totals))
