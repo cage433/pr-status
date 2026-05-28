@@ -169,14 +169,7 @@ def _vlen(s: str) -> int:
     return len(_ANSI_RE.sub('', s))
 
 
-class _Rev:
-    __slots__ = ("val",)
-    def __init__(self, val):        self.val = val
-    def __lt__(self, o: "_Rev"):    return self.val > o.val
-    def __le__(self, o: "_Rev"):    return self.val >= o.val
-    def __gt__(self, o: "_Rev"):    return self.val < o.val
-    def __ge__(self, o: "_Rev"):    return self.val <= o.val
-    def __eq__(self, o: object):    return isinstance(o, _Rev) and self.val == o.val
+from ._util import _Rev
 
 
 def _build_developer_map(full_names: set[str], short_names: dict[str, str]) -> dict[str, str]:

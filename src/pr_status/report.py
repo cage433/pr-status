@@ -2,16 +2,7 @@ import re
 import sys
 from typing import Any
 
-
-class _Rev:
-    """Wraps a value so it sorts in reverse order."""
-    __slots__ = ("val",)
-    def __init__(self, val: Any) -> None: self.val = val
-    def __lt__(self, o: "_Rev") -> bool: return self.val > o.val
-    def __le__(self, o: "_Rev") -> bool: return self.val >= o.val
-    def __gt__(self, o: "_Rev") -> bool: return self.val < o.val
-    def __ge__(self, o: "_Rev") -> bool: return self.val <= o.val
-    def __eq__(self, o: object) -> bool: return isinstance(o, _Rev) and self.val == o.val
+from ._util import _Rev
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -38,7 +29,6 @@ from .config import Config
 from .github_data import GithubData, GithubPR
 from .github_raw_data import GithubRawData
 from .marks import Marks
-from .pr_context import PRContext
 from .report_args import ReportArgs
 from . import youtrack
 from .timely_cache import load_yt_workdays
@@ -66,33 +56,15 @@ def _report_data_lines(
     spec: ReportSpec,
     data: GithubData,
 ) -> list[list[str]]:
-    cols              = spec.cols
-    sort_cols         = spec.sort_cols
-    filters           = spec.filters
-    all_prs           = data.all_prs
-    loc_results       = data.loc_results
-    rows_marked       = data.rows_marked
-    rows_all          = data.rows_all
-    unresolved_counts = data.unresolved_counts
-    last_activity     = data.last_activity
-    youtrack_states   = data.youtrack_states
+    cols      = spec.cols
+    sort_cols = spec.sort_cols
+    filters   = spec.filters
+    all_prs   = data.all_prs
     yt_workdays: dict[str, float] = load_yt_workdays() if WORKDAYS_COL in spec.all_cols else {}
-
-    def make_ctx(pr: GithubPR) -> PRContext:
-        return PRContext(
-            config=config, marks=marks, pr=pr,
-            comments=rows_all.get(pr.number, []),
-            marked_comments=rows_marked.get(pr.number, []),
-            loc=loc_results.get(pr.number, (0, 0)),
-            unresolved=unresolved_counts.get(pr.number, (0, 0, 0)),
-            last_activity_ts=last_activity.get(pr.number, ""),
-            youtrack_states=youtrack_states,
-            yt_workdays=yt_workdays,
-        )
 
     if sort_cols:
         def sort_key(pr: GithubPR) -> list[Any]:
-            ctx = make_ctx(pr)
+            ctx = data.make_ctx(pr, config, marks, yt_workdays)
             key: list[Any] = []
             for si in sort_cols:
                 v = si.column.sort_key(ctx)
@@ -106,19 +78,19 @@ def _report_data_lines(
     if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and config.youtrack_url and config.youtrack_token:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
-            youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
+            data.youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
 
     if pr_filters:
-        all_prs = [pr for pr in all_prs if all(fs.matches(make_ctx(pr)) for fs in pr_filters)]
+        all_prs = [pr for pr in all_prs if all(fs.matches(data.make_ctx(pr, config, marks, yt_workdays)) for fs in pr_filters)]
 
     from .columns import COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL
     _COMMENT_COLS    = frozenset({COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL})
     _comment_in_cols = any(col.column in _COMMENT_COLS for col in cols)
-    comment_source   = rows_all if args.include_pre_mark_commits else rows_marked
+    comment_source   = data.rows_all if args.include_pre_mark_commits else data.rows_marked
 
     rows = []
     for pr in all_prs:
-        ctx = make_ctx(pr)
+        ctx = data.make_ctx(pr, config, marks, yt_workdays)
         stc = spec.show_time_cols(ctx)
         if _comment_in_cols:
             for cr in comment_source.get(pr.number, []):

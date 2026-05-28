@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .config import Config
 from .github_raw_data import GithubRawData, node_login
@@ -8,6 +8,9 @@ from .marks import Marks
 from .node import Node
 from .pr_number import PRNumber
 from .report_args import ReportArgs
+
+if TYPE_CHECKING:
+    from .pr_context import PRContext
 
 
 @dataclass
@@ -100,6 +103,19 @@ class GithubData:
     unresolved_counts: dict[PRNumber, tuple[int, int, int]]  # (all, human, ai)
     last_activity: dict[PRNumber, str]  # ISO timestamp of most recent comment or thread resolution
     youtrack_states: dict[str, str] = field(default_factory=dict)  # ticket_id -> state
+
+    def make_ctx(self, pr: "GithubPR", config: Config, marks: Marks, yt_workdays: dict[str, float]) -> "PRContext":
+        from .pr_context import PRContext
+        return PRContext(
+            config=config, marks=marks, pr=pr,
+            comments=self.rows_all.get(pr.number, []),
+            marked_comments=self.rows_marked.get(pr.number, []),
+            loc=self.loc_results.get(pr.number, (0, 0)),
+            unresolved=self.unresolved_counts.get(pr.number, (0, 0, 0)),
+            last_activity_ts=self.last_activity.get(pr.number, ""),
+            youtrack_states=self.youtrack_states,
+            yt_workdays=yt_workdays,
+        )
 
     @staticmethod
     def _collect_comments(
