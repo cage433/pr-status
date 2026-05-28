@@ -29,6 +29,7 @@ def _visible_len(s: str) -> int:
 
 from .column import (
     Column, ColumnDisplay, FilterSpec,
+    ColumnFilterSpec, ComparisonFilterSpec, _ListError,
     TIMESTAMP_COLS,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, CREATION_DATE_COL,
     LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL, MARK_COL, LOC_COL,
@@ -47,10 +48,7 @@ from .pr_number import PRNumber
 from .report_args import ReportArgs
 from . import youtrack
 from .timely_cache import load_yt_workdays
-from .report_spec import (
-    ColumnFilterSpec, ComparisonFilterSpec, _ListError,
-    ReportSpec,
-)
+from .report_spec import ReportSpec
 
 
 def run_report(
