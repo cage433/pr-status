@@ -28,7 +28,7 @@ def _visible_len(s: str) -> int:
     return len(_ANSI_RE.sub('', s))
 
 from .column import (
-    Column, ColumnDisplay, SortItem, _ListError,
+    Column, _ListError,
     TIMESTAMP_COLS,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, CREATION_DATE_COL,
     LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL, MARK_COL, LOC_COL,
@@ -38,7 +38,9 @@ from .column import (
     YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
     WORKDAYS_COL, COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
 )
+from .column_display import ColumnDisplay
 from .filter_spec import FilterSpec, ColumnFilterSpec, ComparisonFilterSpec
+from .sort_item import SortItem
 from .config import Config
 from .date_utils import fmt_ts, days_since
 from .github_data import GithubComment, GithubData, GithubPR

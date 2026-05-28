@@ -1,11 +1,13 @@
 import unittest
 
 from pr_status.column import (
-    Column, ColumnDisplay, SortItem, _ListError,
+    Column, _ListError,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, NUM_COMMENTS_COL,
     CREATION_DATE_COL, LAST_COMMENT_TIME_COL, UNRESOLVED_ALL_COL, WORKDAYS_COL,
 )
+from pr_status.column_display import ColumnDisplay
 from pr_status.filter_spec import ColumnFilterSpec, ComparisonFilterSpec
+from pr_status.sort_item import SortItem
 from pr_status.report_args import ReportArgs
 from pr_status.report_spec import ReportSpec
 

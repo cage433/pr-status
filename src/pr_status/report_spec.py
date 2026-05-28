@@ -3,11 +3,13 @@ import re
 from dataclasses import dataclass
 
 from .column import (
-    Column, ColumnDisplay, SortItem, _ListError,
+    Column, _ListError,
     ALL_COLUMNS, TIMESTAMP_COLS,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL,
 )
+from .column_display import ColumnDisplay
 from .filter_spec import FilterSpec, ColumnFilterSpec, ComparisonFilterSpec
+from .sort_item import SortItem
 from .report_args import ReportArgs
 
 

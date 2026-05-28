@@ -1,4 +1,3 @@
-import re
 from dataclasses import dataclass
 
 
@@ -39,59 +38,6 @@ class Column:
         if not matches:
             raise _ListError("Unknown column: %r" % name)
         raise _ListError("Ambiguous column %r (matches: %s)" % (name, ", ".join(c.name for c in matches)))
-
-
-@dataclass(frozen=True)
-class ColumnDisplay:
-    column:        Column
-    use_long_name: bool = False
-
-    @property
-    def name(self) -> str:          return self.column.name
-    @property
-    def is_numeric(self) -> bool:   return self.column.is_numeric
-    @property
-    def is_timestamp(self) -> bool: return self.column.is_timestamp
-
-    @property
-    def header(self) -> str:
-        return self.column.name.upper() if self.use_long_name else self.column.label
-
-    @property
-    def header_lines(self) -> list[str]:
-        if self.use_long_name and self.column.multi_line_header:
-            return list(self.column.multi_line_header)
-        return [self.header]
-
-    @property
-    def display_width(self) -> int:
-        if self.use_long_name:
-            return max(self.column.width, max(len(l) for l in self.header_lines))
-        return self.column.width
-
-    @staticmethod
-    def resolve(spec: str) -> "ColumnDisplay":
-        spec = spec.strip()
-        if re.match(r'^.+\s*(>=|<=|==|>|<)\s*.+$', spec):
-            raise _ListError("Comparison expressions cannot be used as columns: %r" % spec)
-        long_name = spec.endswith("_")
-        if long_name:
-            spec = spec[:-1].rstrip()
-        col = Column.resolve(spec)
-        return ColumnDisplay(col, use_long_name=True) if long_name else ColumnDisplay(col)
-
-
-@dataclass(frozen=True)
-class SortItem:
-    column:  Column
-    reverse: bool = False
-
-    @staticmethod
-    def resolve(s: str) -> "SortItem":
-        s = s.strip()
-        if s.lower().endswith(":r"):
-            return SortItem(column=Column.resolve(s[:-2].rstrip()), reverse=True)
-        return SortItem(column=Column.resolve(s))
 
 
 PULL_REQUEST_COL       = Column("pull-request",         "PR",              6,  ("pr",))
