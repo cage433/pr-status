@@ -27,7 +27,17 @@ def _rjust_ansi(s: str, width: int) -> str:
 def _visible_len(s: str) -> int:
     return len(_ANSI_RE.sub('', s))
 
-from .column import Column, ColumnDisplay, FilterSpec
+from .column import (
+    Column, ColumnDisplay, FilterSpec,
+    TIMESTAMP_COLS,
+    PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, CREATION_DATE_COL,
+    LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL, MARK_COL, LOC_COL,
+    NUM_COMMENTS_COL, REVIEWERS_COL, AGE_COL, LAST_ACTIVITY_COL,
+    UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL,
+    DRAFT_COL, REVIEW_OUTSTANDING_COL, VALID_COL,
+    YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
+    WORKDAYS_COL, COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
+)
 from .config import Config
 from .date_utils import fmt_ts, days_since
 from .github_data import GithubComment, GithubData, GithubPR
@@ -39,15 +49,7 @@ from . import youtrack
 from .timely_cache import load_yt_workdays
 from .report_spec import (
     ColumnFilterSpec, ComparisonFilterSpec, _ListError,
-    TIMESTAMP_COLS,
     ReportSpec,
-    PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, CREATION_DATE_COL,
-    LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL, MARK_COL, LOC_COL,
-    NUM_COMMENTS_COL, REVIEWERS_COL, AGE_COL, LAST_ACTIVITY_COL,
-    UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL,
-    DRAFT_COL, REVIEW_OUTSTANDING_COL, VALID_COL,
-    YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
-    WORKDAYS_COL, COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
 )
 
 

@@ -1,13 +1,13 @@
 import unittest
 
-from pr_status.column import Column, ColumnDisplay
+from pr_status.column import (
+    Column, ColumnDisplay,
+    PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, NUM_COMMENTS_COL,
+    CREATION_DATE_COL, LAST_COMMENT_TIME_COL, UNRESOLVED_ALL_COL, WORKDAYS_COL,
+)
 from pr_status.report_args import ReportArgs
 from pr_status.report_spec import (
     ColumnFilterSpec, ComparisonFilterSpec, ReportSpec, _ListError,
-    _COL_BY_NAME,
-    PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, LOC_COL, NUM_COMMENTS_COL,
-    CREATION_DATE_COL, LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL, MARK_COL,
-    COMMENT_COL, UNRESOLVED_ALL_COL, WORKDAYS_COL,
 )
 
 
@@ -95,37 +95,34 @@ class TestResolveSort(unittest.TestCase):
         self.assertEqual(spec.sort_cols, [])
 
     def test_single_sort_col(self):
-        spec = resolve(sort="author")
-        col, rev = spec.sort_cols[0]
-        self.assertEqual(col, _COL_BY_NAME["author"])
+        col, rev = resolve(sort="author").sort_cols[0]
+        self.assertEqual(col, AUTHOR_COL)
         self.assertFalse(rev)
 
     def test_multiple_sort_cols(self):
         spec = resolve(sort="author,creation-date")
         self.assertEqual(len(spec.sort_cols), 2)
-        self.assertEqual(spec.sort_cols[0][0], _COL_BY_NAME["author"])
+        self.assertEqual(spec.sort_cols[0][0], AUTHOR_COL)
         self.assertEqual(spec.sort_cols[1][0], CREATION_DATE_COL)
 
     def test_sort_col_alias(self):
-        spec = resolve(sort="pr")
-        self.assertEqual(spec.sort_cols[0][0], PULL_REQUEST_COL)
+        self.assertEqual(resolve(sort="pr").sort_cols[0][0], PULL_REQUEST_COL)
 
     def test_sort_col_prefix(self):
-        spec = resolve(sort="auth")
-        self.assertEqual(spec.sort_cols[0][0], _COL_BY_NAME["author"])
+        self.assertEqual(resolve(sort="auth").sort_cols[0][0], AUTHOR_COL)
 
     def test_sort_col_reversed(self):
-        col, rev = spec = resolve(sort="author:R").sort_cols[0]
-        self.assertEqual(col, _COL_BY_NAME["author"])
+        col, rev = resolve(sort="author:R").sort_cols[0]
+        self.assertEqual(col, AUTHOR_COL)
         self.assertTrue(rev)
 
     def test_sort_col_reversed_lowercase(self):
-        col, rev = resolve(sort="author:r").sort_cols[0]
+        _, rev = resolve(sort="author:r").sort_cols[0]
         self.assertTrue(rev)
 
     def test_sort_mixed_reversed(self):
         spec = resolve(sort="author,nc:R")
-        self.assertEqual(spec.sort_cols[0], (_COL_BY_NAME["author"], False))
+        self.assertEqual(spec.sort_cols[0], (AUTHOR_COL, False))
         self.assertEqual(spec.sort_cols[1], (NUM_COMMENTS_COL, True))
 
 
@@ -137,7 +134,7 @@ class TestResolveFilters(unittest.TestCase):
         fs = spec.filters[0]
         self.assertIsInstance(fs, ColumnFilterSpec)
         assert isinstance(fs, ColumnFilterSpec)
-        self.assertEqual(fs.column, _COL_BY_NAME["author"])
+        self.assertEqual(fs.column, AUTHOR_COL)
         self.assertEqual(fs.values, {"alice"})
         self.assertFalse(fs.negate)
 
@@ -152,7 +149,6 @@ class TestResolveFilters(unittest.TestCase):
         self.assertEqual(len(spec.filters), 2)
 
     def test_filter_comparison_shorthand(self):
-        # a bare comparison in --filter implicitly filters where the comparison holds
         spec = resolve(filters=["lct>cd"])
         self.assertEqual(len(spec.filters), 1)
         fs = spec.filters[0]
@@ -180,7 +176,7 @@ class TestResolveFilters(unittest.TestCase):
         spec = resolve(filters=["author!=alice"])
         fs = spec.filters[0]
         assert isinstance(fs, ColumnFilterSpec)
-        self.assertEqual(fs.column, _COL_BY_NAME["author"])
+        self.assertEqual(fs.column, AUTHOR_COL)
         self.assertEqual(fs.values, {"alice"})
         self.assertTrue(fs.negate)
 
@@ -197,11 +193,11 @@ class TestResolveAllCols(unittest.TestCase):
     def test_plain_cols_included(self):
         spec = resolve("title,author")
         self.assertIn(TITLE_COL, spec.all_cols)
-        self.assertIn(_COL_BY_NAME["author"], spec.all_cols)
+        self.assertIn(AUTHOR_COL, spec.all_cols)
 
     def test_sort_cols_included(self):
         spec = resolve("title", sort="author")
-        self.assertIn(_COL_BY_NAME["author"], spec.all_cols)
+        self.assertIn(AUTHOR_COL, spec.all_cols)
 
     def test_timestamp_cols_from_comparison_filter_included(self):
         spec = resolve(filters=["lct>cd"])
@@ -209,14 +205,33 @@ class TestResolveAllCols(unittest.TestCase):
         self.assertIn(CREATION_DATE_COL, spec.all_cols)
 
     def test_non_timestamp_sides_of_comparison_not_in_all_cols(self):
-        # date literals are not column objects so should not appear in all_cols
         spec = resolve(filters=["lct>2024-01-01"])
         self.assertIn(LAST_COMMENT_TIME_COL, spec.all_cols)
         self.assertEqual(len([c for c in spec.all_cols if not isinstance(c, Column)]), 0)
 
     def test_filter_cols_included(self):
         spec = resolve(filters=["author=alice"])
-        self.assertIn(_COL_BY_NAME["author"], spec.all_cols)
+        self.assertIn(AUTHOR_COL, spec.all_cols)
+
+
+class TestColFromName(unittest.TestCase):
+
+    def test_known_name_returns_column(self):
+        self.assertEqual(Column.col_from_name("workdays"), WORKDAYS_COL)
+        self.assertEqual(Column.col_from_name("author"), AUTHOR_COL)
+
+    def test_unknown_name_returns_none(self):
+        self.assertIsNone(Column.col_from_name("nonexistent"))
+
+
+class TestColFromAlias(unittest.TestCase):
+
+    def test_known_alias_returns_column(self):
+        self.assertEqual(Column.col_from_alias("pr"), PULL_REQUEST_COL)
+        self.assertEqual(Column.col_from_alias("nc"), NUM_COMMENTS_COL)
+
+    def test_unknown_alias_returns_none(self):
+        self.assertIsNone(Column.col_from_alias("xyz"))
 
 
 class TestColHeader(unittest.TestCase):
@@ -229,19 +244,19 @@ class TestColHeader(unittest.TestCase):
             "mark": "MARK", "comment": "COMMENT",
         }
         for col_name, expected in cases.items():
-            self.assertEqual(ColumnDisplay(_COL_BY_NAME[col_name]).header, expected)
+            self.assertEqual(ColumnDisplay(Column.col_from_name(col_name)).header, expected)
 
     def test_long_name_header_is_column_name_uppercased(self):
-        self.assertEqual(ColumnDisplay(NUM_COMMENTS_COL,    use_long_name=True).header, "NUM-COMMENTS")
-        self.assertEqual(ColumnDisplay(CREATION_DATE_COL,   use_long_name=True).header, "CREATION-DATE")
-        self.assertEqual(ColumnDisplay(UNRESOLVED_ALL_COL,  use_long_name=True).header, "UNRESOLVED (ALL)")
+        self.assertEqual(ColumnDisplay(NUM_COMMENTS_COL,   use_long_name=True).header, "NUM-COMMENTS")
+        self.assertEqual(ColumnDisplay(CREATION_DATE_COL,  use_long_name=True).header, "CREATION-DATE")
+        self.assertEqual(ColumnDisplay(UNRESOLVED_ALL_COL, use_long_name=True).header, "UNRESOLVED (ALL)")
 
 
 class TestColWidth(unittest.TestCase):
 
     def test_plain_column_widths(self):
         self.assertEqual(ColumnDisplay(TITLE_COL).display_width,        60)
-        self.assertEqual(ColumnDisplay(_COL_BY_NAME["author"]).display_width, 15)
+        self.assertEqual(ColumnDisplay(AUTHOR_COL).display_width,       15)
         self.assertEqual(ColumnDisplay(NUM_COMMENTS_COL).display_width,  4)
 
     def test_long_name_width_at_least_header_length(self):
