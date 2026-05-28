@@ -1,7 +1,7 @@
 import unittest
 
 from pr_status.column import (
-    Column, ColumnDisplay,
+    Column, ColumnDisplay, SortItem,
     ColumnFilterSpec, ComparisonFilterSpec, _ListError,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, NUM_COMMENTS_COL,
     CREATION_DATE_COL, LAST_COMMENT_TIME_COL, UNRESOLVED_ALL_COL, WORKDAYS_COL,
@@ -94,35 +94,33 @@ class TestResolveSort(unittest.TestCase):
         self.assertEqual(spec.sort_cols, [])
 
     def test_single_sort_col(self):
-        col, rev = resolve(sort="author").sort_cols[0]
-        self.assertEqual(col, AUTHOR_COL)
-        self.assertFalse(rev)
+        si = resolve(sort="author").sort_cols[0]
+        self.assertEqual(si, SortItem(AUTHOR_COL))
 
     def test_multiple_sort_cols(self):
         spec = resolve(sort="author,creation-date")
         self.assertEqual(len(spec.sort_cols), 2)
-        self.assertEqual(spec.sort_cols[0][0], AUTHOR_COL)
-        self.assertEqual(spec.sort_cols[1][0], CREATION_DATE_COL)
+        self.assertEqual(spec.sort_cols[0].column, AUTHOR_COL)
+        self.assertEqual(spec.sort_cols[1].column, CREATION_DATE_COL)
 
     def test_sort_col_alias(self):
-        self.assertEqual(resolve(sort="pr").sort_cols[0][0], PULL_REQUEST_COL)
+        self.assertEqual(resolve(sort="pr").sort_cols[0].column, PULL_REQUEST_COL)
 
     def test_sort_col_prefix(self):
-        self.assertEqual(resolve(sort="auth").sort_cols[0][0], AUTHOR_COL)
+        self.assertEqual(resolve(sort="auth").sort_cols[0].column, AUTHOR_COL)
 
     def test_sort_col_reversed(self):
-        col, rev = resolve(sort="author:R").sort_cols[0]
-        self.assertEqual(col, AUTHOR_COL)
-        self.assertTrue(rev)
+        si = resolve(sort="author:R").sort_cols[0]
+        self.assertEqual(si, SortItem(AUTHOR_COL, reverse=True))
 
     def test_sort_col_reversed_lowercase(self):
-        _, rev = resolve(sort="author:r").sort_cols[0]
-        self.assertTrue(rev)
+        si = resolve(sort="author:r").sort_cols[0]
+        self.assertTrue(si.reverse)
 
     def test_sort_mixed_reversed(self):
         spec = resolve(sort="author,nc:R")
-        self.assertEqual(spec.sort_cols[0], (AUTHOR_COL, False))
-        self.assertEqual(spec.sort_cols[1], (NUM_COMMENTS_COL, True))
+        self.assertEqual(spec.sort_cols[0], SortItem(AUTHOR_COL))
+        self.assertEqual(spec.sort_cols[1], SortItem(NUM_COMMENTS_COL, reverse=True))
 
 
 class TestResolveFilters(unittest.TestCase):

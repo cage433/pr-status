@@ -118,6 +118,19 @@ class ColumnDisplay:
         return ColumnDisplay(col, use_long_name=True) if long_name else ColumnDisplay(col)
 
 
+@dataclass(frozen=True)
+class SortItem:
+    column:  Column
+    reverse: bool = False
+
+    @staticmethod
+    def resolve(s: str) -> "SortItem":
+        s = s.strip()
+        if s.lower().endswith(":r"):
+            return SortItem(column=Column.resolve(s[:-2].rstrip()), reverse=True)
+        return SortItem(column=Column.resolve(s))
+
+
 PULL_REQUEST_COL       = Column("pull-request",         "PR",              6,  ("pr",))
 TITLE_COL              = Column("title",                "TITLE",           60, ())
 AUTHOR_COL             = Column("author",               "AUTHOR",          15, ("a",))

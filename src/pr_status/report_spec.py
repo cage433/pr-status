@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 
 from .column import (
-    Column, ColumnDisplay, FilterSpec,
+    Column, ColumnDisplay, FilterSpec, SortItem,
     ColumnFilterSpec, ComparisonFilterSpec, _ListError,
     ALL_COLUMNS, TIMESTAMP_COLS,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL,
@@ -14,20 +14,14 @@ from .report_args import ReportArgs
 @dataclass
 class ReportSpec:
     cols:      list[ColumnDisplay]
-    sort_cols: list[tuple[Column, bool]]
+    sort_cols: list[SortItem]
     filters:   list[FilterSpec]
     all_cols:  set[Column]
 
     @staticmethod
     def resolve(args: ReportArgs) -> "ReportSpec":
-        def parse_sort_item(s: str) -> tuple[Column, bool]:
-            s = s.strip()
-            if s.lower().endswith(":r"):
-                return (Column.resolve(s[:-2].rstrip()), True)
-            return (Column.resolve(s), False)
-
         cols      = [ColumnDisplay.resolve(c) for c in args.columns.split(",") if c.strip()] if args.columns else [ColumnDisplay(PULL_REQUEST_COL), ColumnDisplay(TITLE_COL), ColumnDisplay(AUTHOR_COL)]
-        sort_cols = [parse_sort_item(c) for c in args.sort.split(",") if c.strip()] if args.sort else []
+        sort_cols = [SortItem.resolve(c) for c in args.sort.split(",") if c.strip()] if args.sort else []
 
         filters: list[FilterSpec] = []
         for fspec in args.filters:
@@ -65,6 +59,6 @@ class ReportSpec:
                             result.add(col)
                 elif isinstance(fs, ColumnFilterSpec):
                     result.add(fs.column)
-            return result | {col for col, _ in sort_cols}
+            return result | {si.column for si in sort_cols}
 
         return ReportSpec(cols=cols, sort_cols=sort_cols, filters=filters, all_cols=_referenced_cols())

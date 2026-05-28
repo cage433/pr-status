@@ -28,7 +28,7 @@ def _visible_len(s: str) -> int:
     return len(_ANSI_RE.sub('', s))
 
 from .column import (
-    Column, ColumnDisplay, FilterSpec,
+    Column, ColumnDisplay, FilterSpec, SortItem,
     ColumnFilterSpec, ComparisonFilterSpec, _ListError,
     TIMESTAMP_COLS,
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, CREATION_DATE_COL,
@@ -116,46 +116,46 @@ def _report_data_lines(
     if sort_cols:
         def sort_key(pr: GithubPR) -> list[Any]:
             key: list[Any] = []
-            for col, rev in sort_cols:
+            for si in sort_cols:
                 def k(v: Any) -> Any:
-                    return _Rev(v) if rev else v
-                if col == PULL_REQUEST_COL:
+                    return _Rev(v) if si.reverse else v
+                if si.column == PULL_REQUEST_COL:
                     key.append(k(pr.number))
-                elif col == TITLE_COL:
+                elif si.column == TITLE_COL:
                     key.append(k(pr.title.lower()))
-                elif col == AUTHOR_COL:
+                elif si.column == AUTHOR_COL:
                     key.append(k(get_author(pr).lower()))
-                elif col == CREATION_DATE_COL:
+                elif si.column == CREATION_DATE_COL:
                     key.append(k(pr.createdAt or ""))
-                elif col == LAST_COMMENT_TIME_COL:
+                elif si.column == LAST_COMMENT_TIME_COL:
                     key.append(k(get_last_comment(pr.number) or ""))
-                elif col == MY_LAST_COMMENT_COL:
+                elif si.column == MY_LAST_COMMENT_COL:
                     key.append(k(get_last_comment(pr.number, user_only=True) or ""))
-                elif col == MARK_COL:
+                elif si.column == MARK_COL:
                     key.append(k(marks.get(pr.number) or ""))
-                elif col == LOC_COL:
+                elif si.column == LOC_COL:
                     adds, dels = loc_results.get(pr.number, (0, 0))
                     key.append(k(adds + dels))
-                elif col == NUM_COMMENTS_COL:
+                elif si.column == NUM_COMMENTS_COL:
                     key.append(k(count_since(pr.number)))
-                elif col == AGE_COL:
+                elif si.column == AGE_COL:
                     key.append(k(days_since(pr.createdAt) or 0))
-                elif col == LAST_ACTIVITY_COL:
+                elif si.column == LAST_ACTIVITY_COL:
                     d = days_since(last_activity.get(pr.number, ""))
                     key.append(k(-1 if d is None else d))
-                elif col in (UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL):
+                elif si.column in (UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL):
                     uc, uh, ua = unresolved_counts.get(pr.number, (0, 0, 0))
-                    val = uc if col == UNRESOLVED_ALL_COL else uh if col == UNRESOLVED_HUMAN_COL else ua
+                    val = uc if si.column == UNRESOLVED_ALL_COL else uh if si.column == UNRESOLVED_HUMAN_COL else ua
                     key.append(k(val))
-                elif col == REVIEWERS_COL:
+                elif si.column == REVIEWERS_COL:
                     key.append(k(", ".join(config.author_name(r) for r in pr.reviewers).lower()))
-                elif col == DRAFT_COL:
+                elif si.column == DRAFT_COL:
                     key.append(k(pr.isDraft))
-                elif col == REVIEW_OUTSTANDING_COL:
+                elif si.column == REVIEW_OUTSTANDING_COL:
                     outstanding = [config.author_name(r) for r in pr.reviewers
                                    if pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
                     key.append(k(", ".join(outstanding).lower()))
-                elif col == VALID_COL:
+                elif si.column == VALID_COL:
                     _, _, ua = unresolved_counts.get(pr.number, (0, 0, 0))
                     m = _YT_RE.match(pr.title)
                     yt_state = youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
@@ -163,20 +163,20 @@ def _report_data_lines(
                     yt_ok = (m is not None and yt_state == "Review") or ("documentation" in pr.labels and m is None)
                     is_valid = bool(pr.reviewers) and (ua == 0 or all_approved) and yt_ok
                     key.append(k(is_valid))
-                elif col == YOUTRACK_TICKET_COL:
+                elif si.column == YOUTRACK_TICKET_COL:
                     m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) + '-' + m.group(2) if m else "MISSING"))
-                elif col == YOUTRACK_PROJECT_COL:
+                elif si.column == YOUTRACK_PROJECT_COL:
                     m = _YT_RE.match(pr.title)
                     key.append(k(m.group(1) if m else "MISSING"))
-                elif col == YOUTRACK_ID_COL:
+                elif si.column == YOUTRACK_ID_COL:
                     m = _YT_RE.match(pr.title)
                     key.append(k(int(m.group(2)) if m else 10**18))
-                elif col == YOUTRACK_STATE_COL:
+                elif si.column == YOUTRACK_STATE_COL:
                     m = _YT_RE.match(pr.title)
                     tid = m.group(1) + "-" + m.group(2) if m else None
                     key.append(k(youtrack_states.get(tid, "MISSING") if tid else "MISSING"))
-                elif col == WORKDAYS_COL:
+                elif si.column == WORKDAYS_COL:
                     m = _YT_RE.match(pr.title)
                     if m:
                         tid = (m.group(1) + "-" + m.group(2)).upper()
