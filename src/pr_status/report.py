@@ -29,15 +29,13 @@ def _visible_len(s: str) -> int:
 from .column import _ListError
 from .column_display import ColumnDisplay
 from .columns import (
-    _YT_RE, _timestamp_val,
+    _YT_RE,
     YOUTRACK_STATE_COL, VALID_COL, WORKDAYS_COL,
-    COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
 )
-from .filter_spec import FilterSpec, ColumnFilterSpec, ComparisonFilterSpec
+from .filter_spec import FilterSpec
 from .sort_item import SortItem
 from .config import Config
-from .date_utils import fmt_ts
-from .github_data import GithubComment, GithubData, GithubPR
+from .github_data import GithubData, GithubPR
 from .github_raw_data import GithubRawData
 from .marks import Marks
 from .pr_context import PRContext
@@ -92,9 +90,6 @@ def _report_data_lines(
             yt_workdays=yt_workdays,
         )
 
-    def cell(col: ColumnDisplay, ctx: PRContext, show_time: bool = False) -> str:
-        return col.column.cell(ctx, show_time)
-
     if sort_cols:
         def sort_key(pr: GithubPR) -> list[Any]:
             ctx = make_ctx(pr)
@@ -116,6 +111,7 @@ def _report_data_lines(
     if pr_filters:
         all_prs = [pr for pr in all_prs if all(fs.matches(make_ctx(pr)) for fs in pr_filters)]
 
+    from .columns import COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL
     _COMMENT_COLS    = frozenset({COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL})
     _comment_in_cols = any(col.column in _COMMENT_COLS for col in cols)
     comment_source   = rows_all if args.include_pre_mark_commits else rows_marked
@@ -125,33 +121,11 @@ def _report_data_lines(
         ctx = make_ctx(pr)
         stc = spec.show_time_cols(ctx)
         if _comment_in_cols:
-            def comment_cell(col: ColumnDisplay, cr: GithubComment) -> str:
-                if col.column == COMMENT_COL:        return cr.body.split("\n")[0][:70]
-                if col.column == COMMENT_TIME_COL:   return fmt_ts(cr.timestamp, show_time=True)
-                if col.column == COMMENT_AUTHOR_COL: return ctx.config.author_name(cr.author)
-                return cell(col, ctx, col.name in stc)
-
-            def _comment_ts_val(col: str, cr: GithubComment) -> str:
-                if col == "comment-time": return cr.timestamp
-                return _timestamp_val(col, ctx)
-
-            def _comment_filter_val(fs: FilterSpec, cr: GithubComment) -> bool:
-                if isinstance(fs, ComparisonFilterSpec):
-                    lv = _comment_ts_val(fs.left,  cr) or "1970-01-01T00:00:00Z"
-                    rv = _comment_ts_val(fs.right, cr) or "1970-01-01T00:00:00Z"
-                    return (lv > rv if fs.op == ">" else lv < rv if fs.op == "<" else
-                            lv >= rv if fs.op == ">=" else lv <= rv if fs.op == "<=" else lv == rv)
-                assert isinstance(fs, ColumnFilterSpec)
-                if fs.column == COMMENT_TIME_COL:
-                    val = fmt_ts(cr.timestamp, show_time=True)
-                    return (val not in fs.values) if fs.negate else (val in fs.values)
-                return fs.matches(ctx)
-
             for cr in comment_source.get(pr.number, []):
-                if not comment_filters or all(_comment_filter_val(fs, cr) for fs in comment_filters):
-                    rows.append([comment_cell(col, cr) for col in cols])
+                if not comment_filters or all(fs.matches_comment(ctx, cr) for fs in comment_filters):
+                    rows.append([col.comment_cell(cr, ctx, stc) for col in cols])
         else:
-            rows.append([cell(col, ctx, col.name in stc) for col in cols])
+            rows.append([col.cell(ctx, col.name in stc) for col in cols])
     return rows
 
 

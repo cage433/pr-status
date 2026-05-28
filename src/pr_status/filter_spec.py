@@ -8,6 +8,7 @@ from .date_utils import parse_date_literal
 
 if TYPE_CHECKING:
     from .pr_context import PRContext
+    from .github_data import GithubComment
 
 
 class FilterSpec(ABC):
@@ -21,6 +22,10 @@ class FilterSpec(ABC):
 
     @abstractmethod
     def matches(self, ctx: "PRContext") -> bool: ...
+
+    @abstractmethod
+    def matches_comment(self, ctx: "PRContext", cr: "GithubComment") -> bool: ...
+
     @staticmethod
     def resolve(spec: str) -> "FilterSpec":
         spec = spec.strip()
@@ -89,6 +94,14 @@ class ColumnFilterSpec(FilterSpec):
         val = str(ctx.pr.number) if self.column == PULL_REQUEST_COL else self.column.cell(ctx, False)
         return (val not in self.values) if self.negate else (val in self.values)
 
+    def matches_comment(self, ctx: "PRContext", cr: "GithubComment") -> bool:
+        from .columns import COMMENT_TIME_COL
+        from .date_utils import fmt_ts
+        if self.column == COMMENT_TIME_COL:
+            val = fmt_ts(cr.timestamp, show_time=True)
+            return (val not in self.values) if self.negate else (val in self.values)
+        return self.matches(ctx)
+
 
 @dataclass
 class ComparisonFilterSpec(FilterSpec):
@@ -109,5 +122,15 @@ class ComparisonFilterSpec(FilterSpec):
         from .columns import _timestamp_val
         lv = _timestamp_val(self.left,  ctx) or "1970-01-01T00:00:00Z"
         rv = _timestamp_val(self.right, ctx) or "1970-01-01T00:00:00Z"
+        return (lv > rv if self.op == ">" else lv < rv if self.op == "<" else
+                lv >= rv if self.op == ">=" else lv <= rv if self.op == "<=" else lv == rv)
+
+    def matches_comment(self, ctx: "PRContext", cr: "GithubComment") -> bool:
+        from .columns import _timestamp_val
+        def _ts(col: str) -> str:
+            if col == "comment-time": return cr.timestamp
+            return _timestamp_val(col, ctx)
+        lv = _ts(self.left)  or "1970-01-01T00:00:00Z"
+        rv = _ts(self.right) or "1970-01-01T00:00:00Z"
         return (lv > rv if self.op == ">" else lv < rv if self.op == "<" else
                 lv >= rv if self.op == ">=" else lv <= rv if self.op == "<=" else lv == rv)

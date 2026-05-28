@@ -1,7 +1,12 @@
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .column import Column, _ListError
+
+if TYPE_CHECKING:
+    from .pr_context import PRContext
+    from .github_data import GithubComment
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,17 @@ class ColumnDisplay:
         if self.use_long_name:
             return max(self.column.width, max(len(l) for l in self.header_lines))
         return self.column.width
+
+    def cell(self, ctx: "PRContext", show_time: bool = False) -> str:
+        return self.column.cell(ctx, show_time)
+
+    def comment_cell(self, cr: "GithubComment", ctx: "PRContext", stc: set[str]) -> str:
+        from .columns import COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL
+        from .date_utils import fmt_ts
+        if self.column == COMMENT_COL:        return cr.body.split("\n")[0][:70]
+        if self.column == COMMENT_TIME_COL:   return fmt_ts(cr.timestamp, show_time=True)
+        if self.column == COMMENT_AUTHOR_COL: return ctx.config.author_name(cr.author)
+        return self.cell(ctx, self.name in stc)
 
     @staticmethod
     def resolve(spec: str) -> "ColumnDisplay":
