@@ -4,34 +4,27 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from .column import Column
 from .config import Config
 from .timely_cache import CACHE_START, fetch_events_from_cache
 from .timely_report_args import TimelyReportArgs
 
 
-KNOWN_COLS = ["developer", "project", "title", "hours", "workdays", "month", "day",
-              "youtrack-ticket", "youtrack-project", "youtrack-id"]
-COL_ALIASES = {
-    "dev": "developer", "d": "developer",
-    "p": "project",
-    "t": "title",
-    "h": "hours",
-    "w": "workdays", "wd": "workdays",
-    "m": "month",
-    "y": "day",
-    "yt": "youtrack-ticket", "yp": "youtrack-project", "yi": "youtrack-id",
-}
-COL_HEADERS = {
-    "developer": "DEVELOPER", "project": "PROJECT", "title": "TITLE",
-    "hours": "HOURS", "workdays": "WD", "month": "MONTH", "day": "DAY",
-    "youtrack-ticket": "YT", "youtrack-project": "YP", "youtrack-id": "YI",
-}
-COL_WIDTHS = {
-    "developer": 15, "project": 20, "title": 50, "hours": 7, "workdays": 6,
-    "month": 8, "day": 10,
-    "youtrack-ticket": 15, "youtrack-project": 12, "youtrack-id": 7,
-}
-NUMERIC_COLS = {"hours", "workdays"}
+ALL_COLUMNS: list[Column] = [
+    Column("developer",        "DEVELOPER", 15, ("dev", "d")),
+    Column("project",          "PROJECT",   20, ("p",)),
+    Column("title",            "TITLE",     50, ("t",)),
+    Column("hours",            "HOURS",     7,  ("h",),           is_numeric=True),
+    Column("workdays",         "WD",        6,  ("w", "wd"),      is_numeric=True),
+    Column("month",            "MONTH",     8,  ("m",)),
+    Column("day",              "DAY",       10, ("y",)),
+    Column("youtrack-ticket",  "YT",        15, ("yt",)),
+    Column("youtrack-project", "YP",        12, ("yp",)),
+    Column("youtrack-id",      "YI",        7,  ("yi",)),
+]
+
+_COL_BY_NAME:   dict[str, Column] = {c.name: c      for c in ALL_COLUMNS}
+_ALIAS_TO_NAME: dict[str, str]    = {a: c.name for c in ALL_COLUMNS for a in c.aliases}
 
 _YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
 
@@ -113,12 +106,12 @@ def parse_month_spec(s: str, today: date) -> tuple[date, date]:
 
 def _resolve_col(name: str) -> str:
     name = name.lower().strip()
-    if name in COL_ALIASES:
-        return COL_ALIASES[name]
-    matches = [c for c in KNOWN_COLS if c.startswith(name)]
+    if name in _ALIAS_TO_NAME:
+        return _ALIAS_TO_NAME[name]
+    matches = [c.name for c in ALL_COLUMNS if c.name.startswith(name)]
     if len(matches) == 1:
         return matches[0]
-    if name in KNOWN_COLS:
+    if name in _COL_BY_NAME:
         return name
     if not matches:
         raise _TimelyError("Unknown column: %r" % name)
@@ -206,7 +199,7 @@ def _build_developer_map(full_names: set[str], short_names: dict[str, str]) -> d
 
 
 def _reaggregate(rows: list[TimelyRow], col_names: list[str]) -> list[TimelyRow]:
-    group_cols = [c for c in col_names if c not in ("hours", "workdays")]
+    group_cols = [c for c in col_names if not _COL_BY_NAME[c].is_numeric]
     totals: dict[tuple, float] = defaultdict(float)
     for row in rows:
         key = tuple(_cell(c, row) for c in group_cols)
@@ -315,8 +308,8 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
         rows.sort(key=sort_key)
 
     # Render
-    headers = [COL_HEADERS[c] for c in col_names]
-    widths = [max(COL_WIDTHS[c], len(h)) for c, h in zip(col_names, headers)]
+    headers = [_COL_BY_NAME[c].header for c in col_names]
+    widths = [max(_COL_BY_NAME[c].width, len(h)) for c, h in zip(col_names, headers)]
     for row in rows:
         for i, col in enumerate(col_names):
             w = _vlen(_cell(col, row))
@@ -327,7 +320,7 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
     def fmt_row(vals: list[str]) -> str:
         parts = []
         for i, (col, val) in enumerate(zip(col_names, vals)):
-            if col in NUMERIC_COLS:
+            if _COL_BY_NAME[col].is_numeric:
                 parts.append(_rjust(val, widths[i]))
             elif i == len(col_names) - 1:
                 parts.append(val)

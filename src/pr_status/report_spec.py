@@ -3,6 +3,7 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import Any
 
+from .column import Column
 from .date_utils import parse_date_literal
 from .report_args import ReportArgs
 
@@ -26,92 +27,78 @@ class _ListError(Exception):
     pass
 
 
-KNOWN_COLS   = ["pull-request", "title", "author", "loc", "num-comments",
-                "creation-date", "last-comment-time", "my-last-comment-time", "mark",
-                "comment", "comment-time", "comment-author", "reviewers",
-                "unresolved (all)", "unresolved (human)", "unresolved (ai)",
-                "last-activity", "age", "draft",
-                "youtrack-ticket", "youtrack-project", "youtrack-id", "youtrack-state",
-                "valid", "review-outstanding", "workdays"]
-COL_ALIASES  = {"nc": "num-comments", "pr": "pull-request",
-                "cd": "creation-date", "lct": "last-comment-time",
-                "mct": "my-last-comment-time", "mk": "mark", "c": "comment",
-                "ct": "comment-time", "ca": "comment-author", "r": "reviewers",
-                "uc": "unresolved (all)", "uh": "unresolved (human)", "ua": "unresolved (ai)",
-                "la": "last-activity", "ag": "age", "d": "draft",
-                "a": "author",
-                "yt": "youtrack-ticket", "yp": "youtrack-project", "yi": "youtrack-id",
-                "ys": "youtrack-state",
-                "v": "valid",
-                "ro": "review-outstanding",
-                "wd": "workdays"}
-COL_HEADERS  = {"pull-request": "PR", "title": "TITLE", "author": "AUTHOR", "loc": "LOC",
-                "num-comments": "NC", "creation-date": "CREATED",
-                "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
-                "mark": "MARK", "comment": "COMMENT", "comment-time": "CT", "comment-author": "CA",
-                "reviewers": "REVIEWERS",
-                "unresolved (all)": "UC", "unresolved (human)": "UH", "unresolved (ai)": "UA",
-                "last-activity": "LA", "age": "AG", "draft": "D",
-                "youtrack-ticket": "YT", "youtrack-project": "YP", "youtrack-id": "YI",
-                "youtrack-state": "YS", "valid": "V", "review-outstanding": "RO",
-                "workdays": "WD"}
-COL_WIDTHS   = {"pull-request": 6, "title": 60,       "author": 15,       "loc": 15,
-                "num-comments": 4, "creation-date": 17,
-                "last-comment-time": 17, "my-last-comment-time": 17, "mark": 17,
-                "comment": 70, "comment-time": 17, "comment-author": 20, "reviewers": 20,
-                "unresolved (all)": 4, "unresolved (human)": 4, "unresolved (ai)": 4,
-                "last-activity": 4, "age": 4, "draft": 5,
-                "youtrack-ticket": 12, "youtrack-project": 12, "youtrack-id": 7,
-                "youtrack-state": 15, "valid": 5, "review-outstanding": 20,
-                "workdays": 6}
-TIMESTAMP_COLS = {"creation-date", "last-comment-time", "my-last-comment-time", "mark", "comment-time"}
-NUMERIC_COLS   = {"num-comments", "unresolved (all)", "unresolved (human)", "unresolved (ai)",
-                  "last-activity", "age", "workdays"}
-COL_ABBREVS  = {
-    "pull-request": "P", "title": "T", "author": "A", "loc": "LOC",
-    "num-comments": "NC", "creation-date": "CD",
-    "last-comment-time": "LCT", "my-last-comment-time": "MCT", "mark": "MK",
-}
+ALL_COLUMNS: list[Column] = [
+    Column("pull-request",         "PR",              6,  ("pr",),        abbrev="P"),
+    Column("title",                "TITLE",           60, ()),
+    Column("author",               "AUTHOR",          15, ("a",),         abbrev="A"),
+    Column("loc",                  "LOC",             15, (),              abbrev="LOC"),
+    Column("num-comments",         "NC",              4,  ("nc",),         is_numeric=True,   abbrev="NC"),
+    Column("creation-date",        "CREATED",         17, ("cd",),         is_timestamp=True, abbrev="CD"),
+    Column("last-comment-time",    "LAST COMMENT",    17, ("lct",),        is_timestamp=True, abbrev="LCT"),
+    Column("my-last-comment-time", "MY LAST COMMENT", 17, ("mct",),        is_timestamp=True, abbrev="MCT"),
+    Column("mark",                 "MARK",            17, ("mk",),         is_timestamp=True, abbrev="MK"),
+    Column("comment",              "COMMENT",         70, ("c",)),
+    Column("comment-time",         "CT",              17, ("ct",),         is_timestamp=True),
+    Column("comment-author",       "CA",              20, ("ca",)),
+    Column("reviewers",            "REVIEWERS",       20, ("r",)),
+    Column("unresolved (all)",     "UC",              4,  ("uc",),         is_numeric=True,
+           multi_line_header=("UNRESOLVED", "(ALL)")),
+    Column("unresolved (human)",   "UH",              4,  ("uh",),         is_numeric=True,
+           multi_line_header=("UNRESOLVED", "(HUMAN)")),
+    Column("unresolved (ai)",      "UA",              4,  ("ua",),         is_numeric=True,
+           multi_line_header=("UNRESOLVED", "(AI)")),
+    Column("last-activity",        "LA",              4,  ("la",),         is_numeric=True,
+           multi_line_header=("LAST ACTIVITY", "(days)")),
+    Column("age",                  "AG",              4,  ("ag",),         is_numeric=True,
+           multi_line_header=("AGE", "(days)")),
+    Column("draft",                "D",               5,  ("d",)),
+    Column("youtrack-ticket",      "YT",              12, ("yt",)),
+    Column("youtrack-project",     "YP",              12, ("yp",)),
+    Column("youtrack-id",          "YI",              7,  ("yi",)),
+    Column("youtrack-state",       "YS",              15, ("ys",)),
+    Column("valid",                "V",               5,  ("v",)),
+    Column("review-outstanding",   "RO",              20, ("ro",)),
+    Column("workdays",             "WD",              6,  ("wd",),         is_numeric=True),
+]
 
+_COL_BY_NAME:   dict[str, Column] = {c.name:  c      for c in ALL_COLUMNS}
+_ALIAS_TO_NAME: dict[str, str]    = {a: c.name for c in ALL_COLUMNS for a in c.aliases}
 
-_MULTI_LINE_HEADERS: dict[str, list[str]] = {
-    "unresolved (all)":   ["UNRESOLVED", "(ALL)"],
-    "unresolved (human)": ["UNRESOLVED", "(HUMAN)"],
-    "unresolved (ai)":    ["UNRESOLVED", "(AI)"],
-    "last-activity":      ["LAST ACTIVITY", "(days)"],
-    "age": ["AGE", "(days)"],
-}
+# Derived sets kept for callers that need fast membership tests
+TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)
 
 
 def col_header(spec: ColSpec) -> str:
     if isinstance(spec, Comparison):
         def _abbrev(s: str) -> str:
-            return COL_ABBREVS.get(s, s[:10])
+            col = _COL_BY_NAME.get(s)
+            return col.abbrev if col and col.abbrev else s[:10]
         return "%s%s%s" % (_abbrev(spec.left), spec.op, _abbrev(spec.right))
     if isinstance(spec, PlainColumn) and spec.long_name:
         return spec.name.upper()
-    return COL_HEADERS[spec.name]
+    return _COL_BY_NAME[spec.name].header
 
 
 def col_is_numeric(spec: ColSpec) -> bool:
-    return isinstance(spec, PlainColumn) and spec.name in NUMERIC_COLS
+    return isinstance(spec, PlainColumn) and _COL_BY_NAME[spec.name].is_numeric
 
 
 def col_header_lines(spec: ColSpec) -> list[str]:
     if isinstance(spec, PlainColumn) and spec.long_name:
-        lines = _MULTI_LINE_HEADERS.get(spec.name)
-        if lines:
-            return lines
+        col = _COL_BY_NAME[spec.name]
+        if col.multi_line_header:
+            return list(col.multi_line_header)
     return [col_header(spec)]
 
 
 def col_width(spec: ColSpec) -> int:
     if isinstance(spec, Comparison):
         return max(len(col_header(spec)), 5)  # 5 for "false"
+    col = _COL_BY_NAME[spec.name]
     if isinstance(spec, PlainColumn) and spec.long_name:
         lines = col_header_lines(spec)
-        return max(COL_WIDTHS[spec.name], max(len(line) for line in lines))
-    return COL_WIDTHS[spec.name]
+        return max(col.width, max(len(line) for line in lines))
+    return col.width
 
 
 @dataclass
@@ -125,12 +112,12 @@ class ReportSpec:
     def resolve(args: ReportArgs) -> "ReportSpec":
         def resolve_col(name: str) -> str:
             name = name.lower().strip()
-            if name in COL_ALIASES:
-                return COL_ALIASES[name]
-            matches = [c for c in KNOWN_COLS if c.startswith(name)]
+            if name in _ALIAS_TO_NAME:
+                return _ALIAS_TO_NAME[name]
+            matches = [c.name for c in ALL_COLUMNS if c.name.startswith(name)]
             if len(matches) == 1:
                 return matches[0]
-            if name in KNOWN_COLS:
+            if name in _COL_BY_NAME:
                 return name
             if not matches:
                 raise _ListError("Unknown column: %r" % name)
@@ -147,7 +134,8 @@ class ReportSpec:
                 left  = _parse_side(m.group(1))
                 right = _parse_side(m.group(3))
                 for val in (left, right):
-                    if val in KNOWN_COLS and val not in TIMESTAMP_COLS:
+                    col = _COL_BY_NAME.get(val)
+                    if col and not col.is_timestamp:
                         raise _ListError("Column %r is not a timestamp column" % val)
                 return Comparison(left=left, op=op, right=right)
             long_name = spec.endswith("_")
@@ -185,8 +173,10 @@ class ReportSpec:
             names: set[str] = set()
             for s in cols + [fc for fc, _, _ in filters]:
                 if isinstance(s, Comparison):
-                    if s.left  in TIMESTAMP_COLS: names.add(s.left)
-                    if s.right in TIMESTAMP_COLS: names.add(s.right)
+                    for side in (s.left, s.right):
+                        col = _COL_BY_NAME.get(side)
+                        if col and col.is_timestamp:
+                            names.add(side)
                 else:
                     names.add(s.name)
             return names | {col for col, _ in sort_cols}
