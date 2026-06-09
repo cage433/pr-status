@@ -157,6 +157,8 @@ def _report_data_lines(
     sort_cols = spec.sort_cols
     filters   = spec.filters
     all_prs   = data.all_prs
+    if WORKDAYS_COL in spec.all_cols and (not config.timely_access_token or not config.timely_account_id):
+        raise _ListError("timely-access-token and timely-account-id must be set in config to use the workdays (wd) column")
     yt_workdays: dict[str, float] = load_yt_workdays() if WORKDAYS_COL in spec.all_cols else {}
 
     if sort_cols:

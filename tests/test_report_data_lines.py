@@ -6,6 +6,7 @@ from pr_status.github_data import GithubComment, GithubData, GithubPR
 from pr_status.loc import LOC
 from pr_status.marks import Marks
 from pr_status.pr_number import PRNumber
+from pr_status.column import _ListError
 from pr_status.report import Report, _report_data_lines
 from pr_status.report_args import ReportArgs
 from pr_status.report_spec import ReportSpec
@@ -1045,6 +1046,20 @@ class TestValidColumn(unittest.TestCase):
             rows = run("pr,v", filters=["v=false"], config=config, data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
+
+
+class TestWorkdaysColumn(unittest.TestCase):
+
+    def test_error_when_no_timely_credentials(self):
+        data = make_data(prs=[make_pr(1)])
+        with self.assertRaises(_ListError):
+            run("pr,wd", data=data)
+
+    def test_no_error_when_timely_credentials_present(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-1 feature")])
+        config = make_config(timely_access_token="tok", timely_account_id="123")
+        rows = run("pr,wd", config=config, data=data)
+        self.assertEqual(rows[0][1], "")  # no cache data → blank cell, not an error
 
 
 class TestReportAggregate(unittest.TestCase):
