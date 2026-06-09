@@ -996,6 +996,21 @@ class TestValidColumn(unittest.TestCase):
         rows = run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
+    def test_valid_true_when_working_state_and_one_approved(self):
+        pr = make_pr(1, title="PROJ-1 some feature", reviewers=["bob"],
+                     reviewer_states={"bob": "APPROVED"})
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
+                         youtrack_states={"PROJ-1": "Working"})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "true")
+
+    def test_valid_false_when_working_state_and_no_approvals(self):
+        pr = self._pr_with_ticket(1)  # reviewer "bob" has no state
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
+                         youtrack_states={"PROJ-1": "Working"})
+        rows = run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
     def test_valid_filter_shows_only_valid(self):
         valid_pr = self._pr_with_ticket(1)
         invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])

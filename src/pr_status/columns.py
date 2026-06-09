@@ -49,7 +49,10 @@ def _cell_valid(ctx: PRContext, _: bool) -> str:
     yt_state     = ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
     all_approved = bool(ctx.pr.reviewers) and all(
         ctx.pr.reviewer_states.get(r, "") == "APPROVED" for r in ctx.pr.reviewers)
-    yt_ok    = (m is not None and yt_state == "Review") or ("documentation" in ctx.pr.labels and m is None)
+    any_approved = bool(ctx.pr.reviewers) and any(
+        ctx.pr.reviewer_states.get(r, "") == "APPROVED" for r in ctx.pr.reviewers)
+    yt_ok    = (m is not None and (yt_state == "Review" or (yt_state == "Working" and any_approved))) \
+               or ("documentation" in ctx.pr.labels and m is None)
     is_valid = bool(ctx.pr.reviewers) and (ua == 0 or all_approved) and yt_ok
     return "true" if is_valid else "false"
 
