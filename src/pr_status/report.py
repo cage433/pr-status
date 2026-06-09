@@ -32,7 +32,7 @@ from .github_raw_data import GithubRawData
 from .marks import Marks
 from .report_args import ReportArgs
 from . import youtrack
-from .timely_cache import load_yt_workdays
+from .timely_cache import ensure_cache_current, is_cache_current, load_yt_workdays
 from .report_spec import ReportSpec
 
 
@@ -139,6 +139,10 @@ def run_report(
 ) -> None:
     try:
         spec = ReportSpec.resolve(args)
+        if WORKDAYS_COL in spec.all_cols and config.timely_access_token and config.timely_account_id:
+            if not is_cache_current():
+                print("Updating cache…", flush=True)
+                ensure_cache_current(config.timely_account_id, config.timely_access_token)
         raw  = GithubRawData.fetch(config, {col.name for col in spec.all_cols})
         data = GithubData.from_raw(config, marks, args, raw)
         _report_data_lines(config, marks, args, spec, data).aggregate().render()
