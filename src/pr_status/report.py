@@ -163,6 +163,8 @@ def _report_data_lines(
     all_prs   = data.all_prs
     if WORKDAYS_COL in spec.all_cols and (not config.timely_access_token or not config.timely_account_id):
         raise _ListError("timely-access-token and timely-account-id must be set in config to use the workdays (wd) column")
+    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and (not config.youtrack_url or not config.youtrack_token):
+        raise _ListError("youtrack-url and youtrack-token must be set in config to use the valid (v) or youtrack-state (ys) column")
     yt_workdays: dict[str, float] = load_yt_workdays() if WORKDAYS_COL in spec.all_cols else {}
 
     if sort_cols:
@@ -178,7 +180,7 @@ def _report_data_lines(
     pr_filters      = [fs for fs in filters if not fs.uses_comment_time]
     comment_filters = [fs for fs in filters if     fs.uses_comment_time]
 
-    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and config.youtrack_url and config.youtrack_token:
+    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
             data.youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)

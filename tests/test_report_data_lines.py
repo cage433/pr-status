@@ -936,25 +936,30 @@ class TestValidColumn(unittest.TestCase):
     def _pr_with_ticket(self, number: int, reviewers: list[str] | None = None) -> GithubPR:
         return make_pr(number, title="PROJ-1 some feature", reviewers=reviewers or ["bob"])
 
+    def _run(self, columns: str, data: GithubData, **kwargs) -> list[list[str]]:
+        kwargs.setdefault('config', make_config(youtrack_url="http://yt", youtrack_token="tok"))
+        with patch("pr_status.report.youtrack.fetch_states", return_value=data.youtrack_states):
+            return run(columns, data=data, **kwargs)
+
     def test_valid_true_when_all_conditions_met(self):
         pr = self._pr_with_ticket(1)
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 1, 0)},
                          youtrack_states=self._YT_STATES)
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "true")
 
     def test_valid_false_when_no_reviewers(self):
         pr = make_pr(1, title="PROJ-1 feature", reviewers=[])
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
                          youtrack_states=self._YT_STATES)
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_false_when_unresolved_ai_comments_and_reviewer_not_approved(self):
         pr = self._pr_with_ticket(1)  # reviewer "bob" has no state (not approved)
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)},
                          youtrack_states=self._YT_STATES)
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_true_when_ai_comments_but_all_reviewers_approved(self):
@@ -962,7 +967,7 @@ class TestValidColumn(unittest.TestCase):
                      reviewer_states={"bob": "APPROVED"})
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)},
                          youtrack_states=self._YT_STATES)
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "true")
 
     def test_valid_false_when_ai_comments_and_not_all_reviewers_approved(self):
@@ -970,31 +975,31 @@ class TestValidColumn(unittest.TestCase):
                      reviewer_states={"bob": "APPROVED"})
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)},
                          youtrack_states=self._YT_STATES)
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_false_when_no_youtrack_ticket(self):
         pr = make_pr(1, title="no ticket here", reviewers=["bob"])
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_true_when_documentation_label_and_no_ticket(self):
         pr = make_pr(1, title="fix some docs", reviewers=["bob"], labels={"documentation"})
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "true")
 
     def test_valid_false_when_documentation_label_but_ticket_state_wrong(self):
         pr = make_pr(1, title="PROJ-1 fix some docs", reviewers=["bob"], labels={"documentation"})
         data = make_data(prs=[pr], youtrack_states={"PROJ-1": "In Progress"})
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_false_when_youtrack_state_not_review(self):
         pr = self._pr_with_ticket(1)
         data = make_data(prs=[pr], youtrack_states={"PROJ-1": "In Progress"})
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_true_when_working_state_and_one_approved(self):
@@ -1002,21 +1007,21 @@ class TestValidColumn(unittest.TestCase):
                      reviewer_states={"bob": "APPROVED"})
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
                          youtrack_states={"PROJ-1": "Working"})
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "true")
 
     def test_valid_false_when_working_state_and_no_approvals(self):
         pr = self._pr_with_ticket(1)  # reviewer "bob" has no state
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
                          youtrack_states={"PROJ-1": "Working"})
-        rows = run("pr,v", data=data)
+        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_filter_shows_only_valid(self):
         valid_pr = self._pr_with_ticket(1)
         invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
         data = make_data(prs=[valid_pr, invalid_pr], youtrack_states=self._YT_STATES)
-        rows = run("pr,v", filters=["v=true"], data=data)
+        rows = self._run("pr,v", data=data, filters=["v=true"])
         self.assertEqual(len(rows), 1)
         self.assertIn("1", rows[0][0])
 
@@ -1024,14 +1029,14 @@ class TestValidColumn(unittest.TestCase):
         valid_pr = self._pr_with_ticket(1)
         invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
         data = make_data(prs=[valid_pr, invalid_pr], youtrack_states=self._YT_STATES)
-        rows = run("pr,v", sort="v", data=data)
+        rows = self._run("pr,v", data=data, sort="v")
         self.assertIn("2", rows[0][0])  # invalid (false) sorts before valid (true)
 
     def test_valid_alias_v_resolves(self):
         pr = self._pr_with_ticket(1)
         data = make_data(prs=[pr], youtrack_states=self._YT_STATES)
-        rows_via_alias = run("pr,v", data=data)
-        rows_via_name  = run("pr,valid", data=data)
+        rows_via_alias = self._run("pr,v", data=data)
+        rows_via_name  = self._run("pr,valid", data=data)
         self.assertEqual(rows_via_alias, rows_via_name)
 
     def test_filter_fetches_youtrack_states_before_applying(self):
@@ -1046,6 +1051,26 @@ class TestValidColumn(unittest.TestCase):
             rows = run("pr,v", filters=["v=false"], config=config, data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
+
+
+class TestYoutrackColumns(unittest.TestCase):
+
+    def test_error_when_no_youtrack_credentials_v_col(self):
+        data = make_data(prs=[make_pr(1)])
+        with self.assertRaises(_ListError):
+            run("pr,v", data=data)
+
+    def test_error_when_no_youtrack_credentials_ys_col(self):
+        data = make_data(prs=[make_pr(1)])
+        with self.assertRaises(_ListError):
+            run("pr,ys", data=data)
+
+    def test_no_error_when_youtrack_credentials_present(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-1 feature")])
+        config = make_config(youtrack_url="https://yt.example.com", youtrack_token="tok")
+        with patch("pr_status.report.youtrack.fetch_states", return_value={}):
+            rows = run("pr,v", config=config, data=data)
+        self.assertEqual(rows[0][1], "false")  # no YT state → not valid, but no error
 
 
 class TestWorkdaysColumn(unittest.TestCase):
