@@ -1017,6 +1017,30 @@ class TestValidColumn(unittest.TestCase):
         rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
+    def test_valid_true_when_title_starts_with_test_fix(self):
+        pr = make_pr(1, title="test fix flaky integration test", reviewers=["bob"])
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = self._run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "true")
+
+    def test_valid_true_when_title_starts_with_test_fix_case_insensitive(self):
+        pr = make_pr(1, title="Test Fix flaky integration test", reviewers=["bob"])
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = self._run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "true")
+
+    def test_valid_false_when_test_fix_but_no_reviewers(self):
+        pr = make_pr(1, title="test fix something", reviewers=[])
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = self._run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
+    def test_valid_false_when_test_fix_but_unresolved_ai_and_not_approved(self):
+        pr = make_pr(1, title="test fix something", reviewers=["bob"])
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)})
+        rows = self._run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "false")
+
     def test_valid_filter_shows_only_valid(self):
         valid_pr = self._pr_with_ticket(1)
         invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
