@@ -188,7 +188,7 @@ def _report_data_lines(
     if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
-            data.youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids)
+            data.youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids, verify_ssl=config.youtrack_verify_ssl)
 
     if pr_filters:
         all_prs = [pr for pr in all_prs if all(fs.matches(data.make_ctx(pr, config, marks, yt_workdays)) for fs in pr_filters)]

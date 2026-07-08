@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import ssl
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,15 +16,20 @@ def _log(msg: str) -> None:
         f.write("[%s] %s\n" % (datetime.now().isoformat(timespec="seconds"), msg))
 
 
-def _fetch_state(url: str, token: str, ticket_id: str) -> str:
+def _fetch_state(url: str, token: str, ticket_id: str, verify_ssl: bool = True) -> str:
     api_url = "%s/api/issues/%s?fields=customFields(name,value(name))" % (url.rstrip("/"), ticket_id)
     req = urllib.request.Request(
         api_url,
         headers={"Authorization": "Bearer %s" % token, "Accept": "application/json"},
     )
+    ssl_ctx = None
+    if not verify_ssl:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
     t0 = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=ssl_ctx) as resp:
             data = json.loads(resp.read())
         elapsed = time.monotonic() - t0
         result = "—"
@@ -44,7 +50,7 @@ def _fetch_state(url: str, token: str, ticket_id: str) -> str:
         return "ERROR"
 
 
-def fetch_states(url: str, token: str, ticket_ids: list[str]) -> dict[str, str]:
+def fetch_states(url: str, token: str, ticket_ids: list[str], verify_ssl: bool = True) -> dict[str, str]:
     with ThreadPoolExecutor(max_workers=min(len(ticket_ids), 10)) as ex:
-        futures = {ex.submit(_fetch_state, url, token, tid): tid for tid in ticket_ids}
+        futures = {ex.submit(_fetch_state, url, token, tid, verify_ssl): tid for tid in ticket_ids}
         return {futures[f]: f.result() for f in as_completed(futures)}
