@@ -699,20 +699,20 @@ class TestYTColumn(unittest.TestCase):
         rows = run("yt", data=data)
         self.assertEqual(rows[0][0], "MY-PROJECT-456")
 
-    def test_yt_missing_when_no_ticket_id(self):
+    def test_yt_none_when_no_ticket_id(self):
         data = make_data(prs=[make_pr(1, title="fix something without ticket")])
         rows = run("yt", data=data)
-        self.assertEqual(rows[0][0], "MISSING")
+        self.assertEqual(rows[0][0], "none")
 
-    def test_yt_missing_when_ticket_not_at_start(self):
+    def test_yt_none_when_ticket_not_at_start(self):
         data = make_data(prs=[make_pr(1, title="[WIP] PROJ-123 description")])
         rows = run("yt", data=data)
-        self.assertEqual(rows[0][0], "MISSING")
+        self.assertEqual(rows[0][0], "none")
 
-    def test_yt_missing_when_no_digits_after_dash(self):
+    def test_yt_none_when_no_digits_after_dash(self):
         data = make_data(prs=[make_pr(1, title="PROJ- something")])
         rows = run("yt", data=data)
-        self.assertEqual(rows[0][0], "MISSING")
+        self.assertEqual(rows[0][0], "none")
 
     def test_yt_sort_alphabetical(self):
         data = make_data(prs=[
@@ -723,7 +723,7 @@ class TestYTColumn(unittest.TestCase):
         self.assertIn("2", rows[0][0])
         self.assertIn("1", rows[1][0])
 
-    def test_yt_sort_missing_last(self):
+    def test_yt_sort_none_last(self):
         data = make_data(prs=[
             make_pr(1, title="no ticket here"),
             make_pr(2, title="AAA-1 has ticket"),
@@ -732,12 +732,12 @@ class TestYTColumn(unittest.TestCase):
         self.assertIn("2", rows[0][0])
         self.assertIn("1", rows[1][0])
 
-    def test_yt_filter_by_missing(self):
+    def test_yt_filter_by_none(self):
         data = make_data(prs=[
             make_pr(1, title="PROJ-1 has ticket"),
             make_pr(2, title="no ticket"),
         ])
-        rows = run("pr,yt", filters=["yt=MISSING"], data=data)
+        rows = run("pr,yt", filters=["yt=none"], data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
 
@@ -768,15 +768,15 @@ class TestYPColumn(unittest.TestCase):
         rows = run("yp", data=data)
         self.assertEqual(rows[0][0], "MY-PROJECT")
 
-    def test_yp_missing_when_no_ticket_id(self):
+    def test_yp_none_when_no_ticket_id(self):
         data = make_data(prs=[make_pr(1, title="no ticket here")])
         rows = run("yp", data=data)
-        self.assertEqual(rows[0][0], "MISSING")
+        self.assertEqual(rows[0][0], "none")
 
-    def test_yp_missing_when_ticket_not_at_start(self):
+    def test_yp_none_when_ticket_not_at_start(self):
         data = make_data(prs=[make_pr(1, title="[WIP] PROJ-123")])
         rows = run("yp", data=data)
-        self.assertEqual(rows[0][0], "MISSING")
+        self.assertEqual(rows[0][0], "none")
 
     def test_yp_sort_alphabetical(self):
         data = make_data(prs=[
@@ -796,12 +796,12 @@ class TestYPColumn(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("1", rows[0][0])
 
-    def test_yp_filter_missing(self):
+    def test_yp_filter_none(self):
         data = make_data(prs=[
             make_pr(1, title="PROJ-1 a"),
             make_pr(2, title="no ticket"),
         ])
-        rows = run("pr,yp", filters=["yp=MISSING"], data=data)
+        rows = run("pr,yp", filters=["yp=none"], data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
 
@@ -818,10 +818,10 @@ class TestYIColumn(unittest.TestCase):
         rows = run("yi", data=data)
         self.assertEqual(rows[0][0], "456")
 
-    def test_yi_missing_when_no_ticket_id(self):
+    def test_yi_none_when_no_ticket_id(self):
         data = make_data(prs=[make_pr(1, title="no ticket here")])
         rows = run("yi", data=data)
-        self.assertEqual(rows[0][0], "MISSING")
+        self.assertEqual(rows[0][0], "none")
 
     def test_yi_sort_numeric(self):
         data = make_data(prs=[
@@ -832,7 +832,7 @@ class TestYIColumn(unittest.TestCase):
         self.assertIn("1", rows[0][0])   # 9 < 10 numerically
         self.assertIn("2", rows[1][0])
 
-    def test_yi_sort_missing_last(self):
+    def test_yi_sort_none_last(self):
         data = make_data(prs=[
             make_pr(1, title="no ticket"),
             make_pr(2, title="PROJ-1 has ticket"),
@@ -850,14 +850,39 @@ class TestYIColumn(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("1", rows[0][0])
 
-    def test_yi_filter_missing(self):
+    def test_yi_filter_none(self):
         data = make_data(prs=[
             make_pr(1, title="PROJ-1 a"),
             make_pr(2, title="no ticket"),
         ])
-        rows = run("pr,yi", filters=["yi=MISSING"], data=data)
+        rows = run("pr,yi", filters=["yi=none"], data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
+
+
+class TestYSColumn(unittest.TestCase):
+
+    def _run(self, columns: str, data: GithubData, **kwargs) -> list[list[str]]:
+        kwargs.setdefault('config', make_config(youtrack_url="http://yt", youtrack_token="tok"))
+        with patch("pr_status.report.youtrack.fetch_states", return_value=data.youtrack_states):
+            return run(columns, data=data, **kwargs)
+
+    def test_ys_none_when_no_ticket(self):
+        data = make_data(prs=[make_pr(1, title="no ticket here")])
+        rows = self._run("pr,ys", data=data)
+        self.assertEqual(rows[0][1], "none")
+
+    def test_ys_shows_state_when_found(self):
+        data = make_data(prs=[make_pr(1, title="PROJ-1 feature")],
+                         youtrack_states={"PROJ-1": "Review"})
+        rows = self._run("pr,ys", data=data)
+        self.assertEqual(rows[0][1], "Review")
+
+    def test_ys_not_found_when_ticket_absent_from_youtrack(self):
+        data = make_data(prs=[make_pr(1, title="NOPE-9 broken")],
+                         youtrack_states={"NOPE-9": "NOT FOUND"})
+        rows = self._run("pr,ys", data=data)
+        self.assertEqual(rows[0][1], "NOT FOUND")
 
 
 class TestReviewOutstandingColumn(unittest.TestCase):
@@ -962,13 +987,13 @@ class TestValidColumn(unittest.TestCase):
         rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
-    def test_valid_true_when_ai_comments_but_all_reviewers_approved(self):
+    def test_valid_false_when_unresolved_ai_comments_even_if_all_approved(self):
         pr = make_pr(1, title="PROJ-1 some feature", reviewers=["bob"],
                      reviewer_states={"bob": "APPROVED"})
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)},
                          youtrack_states=self._YT_STATES)
         rows = self._run("pr,v", data=data)
-        self.assertEqual(rows[0][1], "true")
+        self.assertEqual(rows[0][1], "false")
 
     def test_valid_false_when_ai_comments_and_not_all_reviewers_approved(self):
         pr = make_pr(1, title="PROJ-1 some feature", reviewers=["bob", "carol"],
@@ -978,9 +1003,16 @@ class TestValidColumn(unittest.TestCase):
         rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
-    def test_valid_false_when_no_youtrack_ticket(self):
+    def test_valid_true_when_no_youtrack_ticket(self):
         pr = make_pr(1, title="no ticket here", reviewers=["bob"])
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
+        rows = self._run("pr,v", data=data)
+        self.assertEqual(rows[0][1], "true")
+
+    def test_valid_false_when_ticket_not_found_in_youtrack(self):
+        pr = make_pr(1, title="NOPE-9 not in youtrack", reviewers=["bob"])
+        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
+                         youtrack_states={"NOPE-9": "NOT FOUND"})
         rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
@@ -1002,48 +1034,17 @@ class TestValidColumn(unittest.TestCase):
         rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
-    def test_valid_true_when_working_state_and_one_approved(self):
+    def test_valid_false_when_working_state_even_with_approval(self):
         pr = make_pr(1, title="PROJ-1 some feature", reviewers=["bob"],
                      reviewer_states={"bob": "APPROVED"})
         data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
                          youtrack_states={"PROJ-1": "Working"})
         rows = self._run("pr,v", data=data)
-        self.assertEqual(rows[0][1], "true")
-
-    def test_valid_false_when_working_state_and_no_approvals(self):
-        pr = self._pr_with_ticket(1)  # reviewer "bob" has no state
-        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)},
-                         youtrack_states={"PROJ-1": "Working"})
-        rows = self._run("pr,v", data=data)
-        self.assertEqual(rows[0][1], "false")
-
-    def test_valid_true_when_title_starts_with_test_fix(self):
-        pr = make_pr(1, title="test fix flaky integration test", reviewers=["bob"])
-        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
-        rows = self._run("pr,v", data=data)
-        self.assertEqual(rows[0][1], "true")
-
-    def test_valid_true_when_title_starts_with_test_fix_case_insensitive(self):
-        pr = make_pr(1, title="Test Fix flaky integration test", reviewers=["bob"])
-        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
-        rows = self._run("pr,v", data=data)
-        self.assertEqual(rows[0][1], "true")
-
-    def test_valid_false_when_test_fix_but_no_reviewers(self):
-        pr = make_pr(1, title="test fix something", reviewers=[])
-        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (0, 0, 0)})
-        rows = self._run("pr,v", data=data)
-        self.assertEqual(rows[0][1], "false")
-
-    def test_valid_false_when_test_fix_but_unresolved_ai_and_not_approved(self):
-        pr = make_pr(1, title="test fix something", reviewers=["bob"])
-        data = make_data(prs=[pr], unresolved_counts={PRNumber(1): (1, 0, 1)})
-        rows = self._run("pr,v", data=data)
         self.assertEqual(rows[0][1], "false")
 
     def test_valid_filter_shows_only_valid(self):
         valid_pr = self._pr_with_ticket(1)
-        invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
+        invalid_pr = make_pr(2, title="NOPE-9 not in youtrack", reviewers=["bob"])
         data = make_data(prs=[valid_pr, invalid_pr], youtrack_states=self._YT_STATES)
         rows = self._run("pr,v", data=data, filters=["v=true"])
         self.assertEqual(len(rows), 1)
@@ -1051,7 +1052,7 @@ class TestValidColumn(unittest.TestCase):
 
     def test_valid_sort_invalid_first(self):
         valid_pr = self._pr_with_ticket(1)
-        invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
+        invalid_pr = make_pr(2, title="NOPE-9 not in youtrack", reviewers=["bob"])
         data = make_data(prs=[valid_pr, invalid_pr], youtrack_states=self._YT_STATES)
         rows = self._run("pr,v", data=data, sort="v")
         self.assertIn("2", rows[0][0])  # invalid (false) sorts before valid (true)
@@ -1068,7 +1069,7 @@ class TestValidColumn(unittest.TestCase):
         # With the bug, youtrack_states was empty at filter time so every PR looked
         # invalid and V=false would match everything, including truly-valid PRs.
         valid_pr   = self._pr_with_ticket(1)  # has ticket, reviewers, state="Review"
-        invalid_pr = make_pr(2, title="no ticket", reviewers=["bob"])
+        invalid_pr = make_pr(2, title="NOPE-9 not in youtrack", reviewers=["bob"])
         config = make_config(youtrack_url="http://yt", youtrack_token="tok")
         data   = make_data(prs=[valid_pr, invalid_pr])   # no pre-populated states
         with patch("pr_status.report.youtrack.fetch_states", return_value={"PROJ-1": "Review"}):

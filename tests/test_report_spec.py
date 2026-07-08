@@ -22,9 +22,9 @@ def resolve(columns: str = "", sort: str = "", filters: list[str] | None = None)
 
 class TestResolveColumns(unittest.TestCase):
 
-    def test_default_columns_when_empty(self):
+    def test_no_columns_when_empty(self):
         spec = resolve()
-        self.assertEqual([c.name for c in spec.cols], ["pull-request", "title", "author"])
+        self.assertEqual(spec.cols, [])
 
     def test_explicit_columns(self):
         spec = resolve("title,author")
@@ -57,10 +57,29 @@ class TestResolveColumns(unittest.TestCase):
         self.assertTrue(spec.cols[0].use_long_name)
 
     def test_trailing_underscore_works_with_alias(self):
-        spec = resolve("cd_,author")
+        spec = resolve("cd_,a")
         self.assertEqual(spec.cols[0].column, CREATION_DATE_COL)
         self.assertTrue(spec.cols[0].use_long_name)
+        self.assertEqual(spec.cols[1].column, AUTHOR_COL)
         self.assertFalse(spec.cols[1].use_long_name)
+
+    def test_full_name_uses_long_header(self):
+        spec = resolve("num-comments")
+        self.assertEqual(spec.cols[0].column, NUM_COMMENTS_COL)
+        self.assertTrue(spec.cols[0].use_long_name)
+
+    def test_full_name_header_matches_alias_underscore(self):
+        self.assertEqual(resolve("num-comments").cols[0].header, resolve("nc_").cols[0].header)
+
+    def test_alias_without_underscore_uses_short_header(self):
+        spec = resolve("nc")
+        self.assertEqual(spec.cols[0].column, NUM_COMMENTS_COL)
+        self.assertFalse(spec.cols[0].use_long_name)
+
+    def test_prefix_match_uses_short_header(self):
+        spec = resolve("num-comm")
+        self.assertEqual(spec.cols[0].column, NUM_COMMENTS_COL)
+        self.assertFalse(spec.cols[0].use_long_name)
 
     def test_cols_are_column_display(self):
         spec = resolve("title,author")

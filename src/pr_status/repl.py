@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 import os
 import sys
 from datetime import date, timedelta
@@ -18,31 +17,9 @@ DEFAULT_CONFIG = os.path.expanduser("~/.config/pr-status/config")
 MARKS_FILE     = os.path.expanduser("~/.cache/pr-status/marks")
 
 
-_HELP_TOPICS = {
-    "columns":   "help_columns.txt",
-    "filtering": "help_filtering.txt",
-    "examples":  "help_examples.txt",
-}
-
-
-def show_help(script_name: str, config_file: str, topic: str = "") -> None:
-    help_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "help")
-    topic = topic.strip().lower()
-    if topic:
-        filename = _HELP_TOPICS.get(topic)
-        if filename is None:
-            print("Unknown help topic '%s'. Available topics: %s" % (topic, ", ".join(_HELP_TOPICS)), file=sys.stderr)
-            return
-        print(open(os.path.join(help_dir, filename)).read().rstrip())
-    else:
-        print(open(os.path.join(help_dir, "help_text.txt")).read().rstrip().format(script=script_name, config=config_file))
-
-
 def run_repl(
     config: Config,
     marks: Marks,
-    script_name: str,
-    config_file: str,
 ) -> None:
     focused_pr: PRNumber | None = None
 
@@ -166,12 +143,9 @@ def run_repl(
                     print("Done.")
 
             elif cmd in ("reload", "rl"):
-                config = Config.load(config_file)
+                config = Config.load(DEFAULT_CONFIG)
                 config.repo.gh_user = gh_api.get_gh_user()
                 print("Config reloaded.")
-
-            elif cmd in ("help", "h"):
-                show_help(script_name, config.config_file or DEFAULT_CONFIG, arg)
 
             elif cmd in ("alias", "aliases"):
                 if config.aliases:
@@ -184,58 +158,28 @@ def run_repl(
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, timely (t), rtc, mark, unmark, focus, unfocus, reload, alias, help, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Use: report, timely (t), rtc, mark, unmark, focus, unfocus, reload, alias, quit" % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()
             continue
 
 
-def _offer_create_config() -> None:
-    sample_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample.config")
-    print("No config file found at %s." % DEFAULT_CONFIG)
-    try:
-        answer = input("Create one from the sample? [y/N] ").strip().lower()
-    except EOFError:
-        return
-    if answer != "y":
-        return
-    os.makedirs(os.path.dirname(DEFAULT_CONFIG), exist_ok=True)
-    with open(sample_path) as src, open(DEFAULT_CONFIG, "w") as dst:
-        dst.write(src.read())
-    print("Created %s — please edit it to set your owner and repo-name." % DEFAULT_CONFIG)
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(prog=os.path.basename(sys.argv[0]), add_help=False)
-    parser.add_argument("-c", dest="config_file", default="",         metavar="CONFIG")
-    parser.add_argument("-m", dest="marks_file",  default=MARKS_FILE, metavar="MARKS")
-    parser.add_argument("-h", dest="show_help",   action="store_true")
-    args = parser.parse_args()
-
-    script_name = os.path.basename(sys.argv[0])
-
-    if args.config_file and not os.path.isfile(args.config_file):
-        print("Error: Config file not found: %s" % args.config_file, file=sys.stderr)
+    if not os.path.isfile(DEFAULT_CONFIG):
+        print("Error: no config file found at %s.\n"
+              "Create one as described in the Config section of the README." % DEFAULT_CONFIG,
+              file=sys.stderr)
         sys.exit(1)
 
-    if not args.config_file and not os.path.isfile(DEFAULT_CONFIG):
-        _offer_create_config()
-
-    config_file = args.config_file or (DEFAULT_CONFIG if os.path.isfile(DEFAULT_CONFIG) else "")
-
-    if args.show_help:
-        show_help(script_name, config_file or DEFAULT_CONFIG)
-        sys.exit(0)
-
-    config = Config.load(config_file)
+    config = Config.load(DEFAULT_CONFIG)
     config.repo.gh_user = gh_api.get_gh_user()
 
     if not config.repo.owner or not config.repo.repo_name:
         print("Error: no repository specified. Set 'owner:' and 'repo-name:' in config.", file=sys.stderr)
         sys.exit(1)
 
-    run_repl(config, Marks(args.marks_file), script_name, config_file)
+    run_repl(config, Marks(MARKS_FILE))
 
 
 if __name__ == "__main__":

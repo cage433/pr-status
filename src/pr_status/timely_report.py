@@ -134,9 +134,9 @@ def _cell(col: str, row: TimelyRow) -> str:
     if col == "workdays":  return "%.1f" % (row.hours / 8)
     if col == "month":     return row.month
     if col == "day":       return row.day
-    if col == "youtrack-ticket":  return (row.yt_project + "-" + row.yt_id) if (row.yt_project and row.yt_id) else "MISSING"
-    if col == "youtrack-project": return row.yt_project or "MISSING"
-    if col == "youtrack-id":      return row.yt_id or "MISSING"
+    if col == "youtrack-ticket":  return (row.yt_project + "-" + row.yt_id) if (row.yt_project and row.yt_id) else "none"
+    if col == "youtrack-project": return row.yt_project or "none"
+    if col == "youtrack-id":      return row.yt_id or "none"
     return ""
 
 
@@ -236,8 +236,9 @@ def _run(config: Config, args: TimelyReportArgs) -> None:
     today = date.today()
 
     # Parse columns
-    default_cols = "developer,project,title,hours,month"
-    col_names = [_resolve_col(c.strip()) for c in (args.columns or default_cols).split(",") if c.strip()]
+    col_names = [_resolve_col(c.strip()) for c in args.columns.split(",") if c.strip()]
+    if not col_names:
+        return
 
     # Parse filters — month filters set the fetch range; named months also filter rows
     since, upto = _default_range(today)

@@ -57,4 +57,6 @@ class ColumnDisplay:
         if long_name:
             spec = spec[:-1].rstrip()
         col = Column.resolve(spec)
-        return ColumnDisplay(col, use_long_name=True) if long_name else ColumnDisplay(col)
+        # A full-name spec renders the same long heading as an alias followed by "_".
+        full_name = col.name == spec.lower().strip()
+        return ColumnDisplay(col, use_long_name=long_name or full_name)

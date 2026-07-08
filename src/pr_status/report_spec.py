@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .column import Column
-from .columns import PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL
 from .column_display import ColumnDisplay
 from .filter_spec import FilterSpec
 from .sort_item import SortItem
@@ -38,7 +37,7 @@ class ReportSpec:
 
     @staticmethod
     def resolve(args: ReportArgs, me: str = "") -> "ReportSpec":
-        cols      = [ColumnDisplay.resolve(c) for c in args.columns.split(",") if c.strip()] if args.columns else [ColumnDisplay(PULL_REQUEST_COL), ColumnDisplay(TITLE_COL), ColumnDisplay(AUTHOR_COL)]
+        cols      = [ColumnDisplay.resolve(c) for c in args.columns.split(",") if c.strip()]
         sort_cols = [SortItem.resolve(c) for c in args.sort.split(",") if c.strip()] if args.sort else []
         filters   = [FilterSpec.resolve(f, me) for f in args.filters if f.strip()]
         return ReportSpec(cols=cols, sort_cols=sort_cols, filters=filters)

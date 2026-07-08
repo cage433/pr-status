@@ -139,6 +139,8 @@ def run_report(
 ) -> None:
     try:
         spec = ReportSpec.resolve(args, config.this_author)
+        if not spec.cols:
+            return
         if WORKDAYS_COL in spec.all_cols and config.timely_access_token and config.timely_account_id:
             if not is_cache_current():
                 print("Updating cache…", flush=True)

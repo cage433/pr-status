@@ -46,15 +46,15 @@ def _cell_reviewers(ctx: PRContext, _: bool) -> str:
 def _cell_valid(ctx: PRContext, _: bool) -> str:
     _, _, ua = ctx.unresolved
     m = _yt_match(ctx)
-    yt_state     = ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "") if m else ""
-    all_approved = bool(ctx.pr.reviewers) and all(
-        ctx.pr.reviewer_states.get(r, "") == "APPROVED" for r in ctx.pr.reviewers)
-    any_approved = bool(ctx.pr.reviewers) and any(
-        ctx.pr.reviewer_states.get(r, "") == "APPROVED" for r in ctx.pr.reviewers)
-    yt_ok    = (m is not None and (yt_state == "Review" or (yt_state == "Working" and any_approved))) \
-               or ("documentation" in ctx.pr.labels and m is None) \
-               or ctx.pr.title.lower().startswith("test fix")
-    is_valid = bool(ctx.pr.reviewers) and (ua == 0 or all_approved) and yt_ok
+    # A PR with no YT ticket in its title is not invalid on that account. A PR that
+    # does reference a ticket is only valid if that ticket is in the "Review" state
+    # (a ticket that can't be found in YT has state "NOT FOUND", so is invalid).
+    if m is None:
+        yt_ok = True
+    else:
+        yt_state = ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "")
+        yt_ok = yt_state == "Review"
+    is_valid = bool(ctx.pr.reviewers) and ua == 0 and yt_ok
     return "true" if is_valid else "false"
 
 def _cell_workdays(ctx: PRContext, _: bool) -> str:
@@ -67,7 +67,7 @@ def _cell_workdays(ctx: PRContext, _: bool) -> str:
 
 def _cell_yt_state(ctx: PRContext, _: bool) -> str:
     m = _yt_match(ctx)
-    if not m: return "MISSING"
+    if not m: return "none"
     return ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "—")
 
 def _sort_key_workdays(ctx: PRContext) -> float:
@@ -84,8 +84,8 @@ def _sort_key_yt_id(ctx: PRContext) -> int:
 
 def _sort_key_yt_state(ctx: PRContext) -> str:
     m = _yt_match(ctx)
-    if not m: return "MISSING"
-    return ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "MISSING")
+    if not m: return "none"
+    return ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "—")
 
 
 PULL_REQUEST_COL = Column(
@@ -94,7 +94,7 @@ PULL_REQUEST_COL = Column(
     sort_key=lambda ctx: ctx.pr.number,
 )
 TITLE_COL = Column(
-    "title", "TITLE", 60, (),
+    "title", "TITLE", 60, ("t",),
     cell=lambda ctx, _: ctx.pr.title[:58],
     sort_key=lambda ctx: ctx.pr.title.lower(),
 )
@@ -104,7 +104,7 @@ AUTHOR_COL = Column(
     sort_key=lambda ctx: ctx.config.author_name(ctx.pr.author).lower(),
 )
 LOC_COL = Column(
-    "loc", "LOC", 15, (),
+    "loc", "LOC", 15, ("loc",),
     cell=_cell_loc,
     sort_key=lambda ctx: sum(ctx.loc),
 )
@@ -173,17 +173,17 @@ DRAFT_COL = Column(
 )
 YOUTRACK_TICKET_COL = Column(
     "youtrack-ticket", "YT", 12, ("yt",),
-    cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "MISSING",
-    sort_key=lambda ctx: (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "MISSING",
+    cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "none",
+    sort_key=lambda ctx: (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "none",
 )
 YOUTRACK_PROJECT_COL = Column(
     "youtrack-project", "YP", 12, ("yp",),
-    cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(1) or "MISSING",
-    sort_key=lambda ctx: (m := _yt_match(ctx)) and m.group(1) or "MISSING",
+    cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(1) or "none",
+    sort_key=lambda ctx: (m := _yt_match(ctx)) and m.group(1) or "none",
 )
 YOUTRACK_ID_COL = Column(
     "youtrack-id", "YI", 7, ("yi",),
-    cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(2) or "MISSING",
+    cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(2) or "none",
     sort_key=_sort_key_yt_id,
 )
 YOUTRACK_STATE_COL = Column(

@@ -31,7 +31,10 @@ class FilterSpec(ABC):
         spec = spec.strip()
         if "@me" in spec:
             if not me:
-                raise _ListError("this-author must be set in config to use @me")
+                raise _ListError(
+                    "'@me' in a filter requires 'this-author:' to be set in your config file "
+                    "(it is replaced with that name). See the Config section of the README."
+                )
             spec = spec.replace("@me", me)
         ne_parts = spec.split("!=", 1)
         if len(ne_parts) == 2:
