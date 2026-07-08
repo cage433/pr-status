@@ -23,6 +23,7 @@ class Config:
     ignored_title_patterns: list[re.Pattern]
     ignored_labels: set[str]
     aliases: dict[str, str]
+    this_author: str = ""
     max_threads: int = 50
     config_file: str = ""
     youtrack_url: str = ""
@@ -52,6 +53,7 @@ class Config:
         ignored_title_patterns: list[re.Pattern] = []
         ignored_labels: set[str] = set()
         aliases: dict[str, str] = {}
+        this_author = ""
         max_threads = 50
         youtrack_url = ""
         youtrack_token = ""
@@ -127,6 +129,9 @@ class Config:
                             except re.error:
                                 pass
                         continue
+                    m = re.match(r'^this-author:\s*(.*)', line)
+                    if m:
+                        this_author = m.group(1).strip(); continue
                     m = re.match(r'^max-threads:\s*(.*)', line)
                     if m:
                         try:
@@ -192,6 +197,7 @@ class Config:
             ignored_title_patterns=ignored_title_patterns,
             ignored_labels=ignored_labels,
             aliases=aliases,
+            this_author=this_author,
             max_threads=max_threads,
             config_file=config_file,
             youtrack_url=youtrack_url,

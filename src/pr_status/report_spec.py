@@ -37,8 +37,8 @@ class ReportSpec:
         return {c for date_cols in date_to_cols.values() if len(date_cols) > 1 for c in date_cols}
 
     @staticmethod
-    def resolve(args: ReportArgs) -> "ReportSpec":
+    def resolve(args: ReportArgs, me: str = "") -> "ReportSpec":
         cols      = [ColumnDisplay.resolve(c) for c in args.columns.split(",") if c.strip()] if args.columns else [ColumnDisplay(PULL_REQUEST_COL), ColumnDisplay(TITLE_COL), ColumnDisplay(AUTHOR_COL)]
         sort_cols = [SortItem.resolve(c) for c in args.sort.split(",") if c.strip()] if args.sort else []
-        filters   = [FilterSpec.resolve(f) for f in args.filters if f.strip()]
+        filters   = [FilterSpec.resolve(f, me) for f in args.filters if f.strip()]
         return ReportSpec(cols=cols, sort_cols=sort_cols, filters=filters)

@@ -27,8 +27,12 @@ class FilterSpec(ABC):
     def matches_comment(self, ctx: "PRContext", cr: "GithubComment") -> bool: ...
 
     @staticmethod
-    def resolve(spec: str) -> "FilterSpec":
+    def resolve(spec: str, me: str = "") -> "FilterSpec":
         spec = spec.strip()
+        if "@me" in spec:
+            if not me:
+                raise _ListError("this-author must be set in config to use @me")
+            spec = spec.replace("@me", me)
         ne_parts = spec.split("!=", 1)
         if len(ne_parts) == 2:
             fs = FilterSpec._parse(ne_parts[0].strip())

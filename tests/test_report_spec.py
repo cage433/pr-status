@@ -186,6 +186,17 @@ class TestResolveFilters(unittest.TestCase):
         self.assertEqual(fs.values, {"alice", "bob"})
         self.assertTrue(fs.negate)
 
+    def test_filter_me_resolves_to_this_author(self):
+        spec = ReportSpec.resolve(make_args(filters=["author=@me"]), me="alice")
+        fs = spec.filters[0]
+        assert isinstance(fs, ColumnFilterSpec)
+        self.assertEqual(fs.column, AUTHOR_COL)
+        self.assertEqual(fs.values, {"alice"})
+
+    def test_filter_me_without_this_author_raises(self):
+        with self.assertRaises(_ListError):
+            ReportSpec.resolve(make_args(filters=["author=@me"]), me="")
+
 
 class TestResolveAllCols(unittest.TestCase):
 
