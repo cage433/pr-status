@@ -50,7 +50,9 @@ def _fetch_state(url: str, token: str, ticket_id: str, verify_ssl: bool = True) 
         return "ERROR"
 
 
-def fetch_states(url: str, token: str, ticket_ids: list[str], verify_ssl: bool = True) -> dict[str, str]:
-    with ThreadPoolExecutor(max_workers=min(len(ticket_ids), 10)) as ex:
+def fetch_states(url: str, token: str, ticket_ids: list[str], verify_ssl: bool = True,
+                 max_workers: int = 10) -> dict[str, str]:
+    workers = max(1, min(len(ticket_ids), max_workers))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {ex.submit(_fetch_state, url, token, tid, verify_ssl): tid for tid in ticket_ids}
         return {futures[f]: f.result() for f in as_completed(futures)}

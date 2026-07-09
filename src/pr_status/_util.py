@@ -1,4 +1,15 @@
+import os
+from datetime import datetime
 from typing import Any
+
+_TIMING_LOG = os.path.expanduser("~/.cache/pr-status/timing.log")
+
+
+def timing_log(msg: str) -> None:
+    """Append a timestamped line to the timing log (for analysing API latency)."""
+    os.makedirs(os.path.dirname(_TIMING_LOG), exist_ok=True)
+    with open(_TIMING_LOG, "a") as f:
+        f.write("[%s] %s\n" % (datetime.now().isoformat(timespec="seconds"), msg))
 
 
 class _Rev:

@@ -1,11 +1,24 @@
 import json
 import subprocess
 import sys
+import time
 
+from ._util import timing_log
 from .config import GithubInfo
 from .loc import LOC
 from .node import Node
 from .pr_number import PRNumber
+
+
+def _run_gh(cmd: list[str], label: str) -> "subprocess.CompletedProcess[str]":
+    t0 = time.monotonic()
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    dt = time.monotonic() - t0
+    if r.returncode != 0:
+        timing_log("%s %.3fs FAILED rc=%d %s" % (label, dt, r.returncode, r.stderr.strip()[:200]))
+    else:
+        timing_log("%s %.3fs" % (label, dt))
+    return r
 
 GRAPHQL_QUERY_LIGHT = """
 query($owner: String!, $repo: String!, $cursor: String) {
@@ -70,6 +83,28 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 """
 
+# Minimal variant for reports that only need unresolved-thread counts (e.g. the UH/UA
+# columns): no comment/review bodies, no top-level comments/reviews, and threads at
+# depth 1 (only the first comment's author is used). ~25x fewer nodes than the full
+# query, which cuts GitHub response time and payload for reports like 'all'.
+GRAPHQL_QUERY_UNRESOLVED_ONLY = """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100) {
+        nodes {
+          isResolved
+          isOutdated
+          comments(first: 1) {
+            nodes { author { login } }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 
 def get_gh_user() -> str:
     r = subprocess.run(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True)
@@ -82,14 +117,16 @@ def get_gh_user() -> str:
 def fetch_pr_nodes(repo: GithubInfo) -> list[Node]:
     nodes: list[Node] = []
     cursor: str | None = None
+    page = 0
     while True:
+        page += 1
         cmd = ["gh", "api", "graphql",
                "-f", "query=" + GRAPHQL_QUERY_LIGHT,
                "-f", "owner=" + repo.owner,
                "-f", "repo=" + repo.repo_name]
         if cursor:
             cmd += ["-f", "cursor=" + cursor]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = _run_gh(cmd, "pr-nodes page %d" % page)
         if result.returncode != 0:
             print("Error fetching PRs: " + result.stderr, file=sys.stderr)
             sys.exit(1)
@@ -107,19 +144,20 @@ def fetch_scala_loc(repo: GithubInfo, pr_num: PRNumber) -> LOC:
     cmd = ["gh", "api", "--paginate",
            "repos/%s/%s/pulls/%d/files?per_page=100" % (repo.owner, repo.repo_name, pr_num),
            "--jq", '.[] | select(.filename | endswith(".scala")) | [.additions, .deletions]']
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    r = _run_gh(cmd, "loc pr#%d" % pr_num)
     lines = r.stdout.strip().splitlines() if r.returncode == 0 else []
     parsed = [json.loads(l) for l in lines if l]
     return (sum(p[0] for p in parsed), sum(p[1] for p in parsed))
 
 
-def fetch_pr_comment_data(repo: GithubInfo, pr_num: PRNumber) -> Node:
+def fetch_pr_comment_data(repo: GithubInfo, pr_num: PRNumber, minimal: bool = False) -> Node:
+    query = GRAPHQL_QUERY_UNRESOLVED_ONLY if minimal else GRAPHQL_QUERY_COMMENT_COUNTS
     cmd = ["gh", "api", "graphql",
-           "-f", "query=" + GRAPHQL_QUERY_COMMENT_COUNTS,
+           "-f", "query=" + query,
            "-f", "owner=" + repo.owner,
            "-f", "repo=" + repo.repo_name,
            "-F", "number=" + str(pr_num)]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    r = _run_gh(cmd, "comments pr#%d" % pr_num)
     if r.returncode != 0:
         return {}
     try:

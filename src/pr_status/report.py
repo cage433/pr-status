@@ -1,9 +1,11 @@
 import re
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
-from ._util import _Rev
+from ._util import _Rev, timing_log
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -141,13 +143,42 @@ def run_report(
         spec = ReportSpec.resolve(args, config.this_author)
         if not spec.cols:
             return
+        t0 = time.monotonic()
         if WORKDAYS_COL in spec.all_cols and config.timely_access_token and config.timely_account_id:
             if not is_cache_current():
                 print("Updating cache…", flush=True)
                 ensure_cache_current(config.timely_account_id, config.timely_access_token)
-        raw  = GithubRawData.fetch(config, {col.name for col in spec.all_cols})
+        all_col_names = {col.name for col in spec.all_cols}
+
+        # Fetch the light PR query first; its titles give the YouTrack ticket ids, so we
+        # can run the (independent) YouTrack lookup concurrently with the slow per-PR
+        # comment/LOC fetch rather than after it.
+        pr_nodes = GithubRawData.fetch_pr_nodes_filtered(config, args)
+        yt_future = yt_executor = None
+        if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and config.youtrack_url and config.youtrack_token:
+            ticket_ids = [m.group(1) + "-" + m.group(2) for n in pr_nodes if (m := _YT_RE.match(n["title"]))]
+            if ticket_ids:
+                # Time fetch_states on its own thread; measuring at .result() below would
+                # instead capture the concurrent comment-fetch duration.
+                def _fetch_youtrack() -> dict[str, str]:
+                    t = time.monotonic()
+                    states = youtrack.fetch_states(
+                        config.youtrack_url, config.youtrack_token, ticket_ids,
+                        verify_ssl=config.youtrack_verify_ssl, max_workers=config.youtrack_threads)
+                    timing_log("youtrack (concurrent): %d tickets in %.3fs" % (len(ticket_ids), time.monotonic() - t))
+                    return states
+                yt_executor = ThreadPoolExecutor(max_workers=1)
+                yt_future = yt_executor.submit(_fetch_youtrack)
+
+        raw  = GithubRawData.fetch(config, args, all_col_names, pr_nodes=pr_nodes)
         data = GithubData.from_raw(config, marks, args, raw)
+
+        if yt_future is not None:
+            data.youtrack_states = yt_future.result()
+            yt_executor.shutdown()
+
         _report_data_lines(config, marks, args, spec, data).aggregate().render()
+        timing_log("report total: %.3fs" % (time.monotonic() - t0))
     except _ListError as e:
         print(str(e), file=sys.stderr)
 
@@ -185,10 +216,16 @@ def _report_data_lines(
     pr_filters      = [fs for fs in filters if not fs.uses_comment_time]
     comment_filters = [fs for fs in filters if     fs.uses_comment_time]
 
-    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols:
+    # run_report normally prefetches YouTrack states concurrently with the GitHub fetch;
+    # data.youtrack_states is then already populated (fetch_states returns a key per
+    # ticket, so a non-empty result means "already fetched"). Only fetch here when it
+    # wasn't prefetched — e.g. tests that call _report_data_lines directly.
+    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and not data.youtrack_states:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
-            data.youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids, verify_ssl=config.youtrack_verify_ssl)
+            t0 = time.monotonic()
+            data.youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids, verify_ssl=config.youtrack_verify_ssl, max_workers=config.youtrack_threads)
+            timing_log("youtrack: %d tickets in %.3fs" % (len(ticket_ids), time.monotonic() - t0))
 
     if pr_filters:
         all_prs = [pr for pr in all_prs if all(fs.matches(data.make_ctx(pr, config, marks, yt_workdays)) for fs in pr_filters)]

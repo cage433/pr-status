@@ -29,6 +29,7 @@ class Config:
     youtrack_url: str = ""
     youtrack_token: str = ""
     youtrack_verify_ssl: bool = True
+    youtrack_threads: int = 10
     timely_access_token: str = ""
     timely_account_id: str = ""
     timely_ignored_projects: set[str] = field(default_factory=set)
@@ -59,6 +60,7 @@ class Config:
         youtrack_url = ""
         youtrack_token = ""
         youtrack_verify_ssl = True
+        youtrack_threads = 10
         timely_access_token = ""
         timely_account_id = ""
         timely_ignored_projects: set[str] = set()
@@ -157,6 +159,13 @@ class Config:
                     m = re.match(r'^youtrack-verify-ssl:\s*(.*)', line)
                     if m:
                         youtrack_verify_ssl = m.group(1).strip().lower() != "false"; continue
+                    m = re.match(r'^youtrack-threads:\s*(.*)', line)
+                    if m:
+                        try:
+                            youtrack_threads = int(m.group(1).strip())
+                        except ValueError:
+                            pass
+                        continue
                     m = re.match(r'^timely-access-token:\s*(.*)', line)
                     if m:
                         timely_access_token = m.group(1).strip(); continue
@@ -208,6 +217,7 @@ class Config:
             youtrack_url=youtrack_url,
             youtrack_token=youtrack_token,
             youtrack_verify_ssl=youtrack_verify_ssl,
+            youtrack_threads=youtrack_threads,
             timely_access_token=timely_access_token,
             timely_account_id=timely_account_id,
             timely_ignored_projects=timely_ignored_projects,
