@@ -87,7 +87,7 @@ These should be written as a comma separated list of names or aliases. The avail
 | last-activity | LA | Days since most recent comment or review activity |
 | age | AG | Days since the PR was opened |
 | draft | D | Whether the PR is a draft (true/false) |
-| build | B | CI state of the last build on the PR's head commit: `✓` full build passing, `✗` any build failing, `…` full build running, `_` no build or a passing/running partial build. A full build is one with 8 or more checks; a partial build (just scalafmt + CodeRabbit) is only surfaced when it fails |
+| build | CI | CI state of the last build on the PR's head commit: `✓` full build passing, `✗` any build failing, `…` full build running, `_` no build or a passing/running partial build. A full build is one with 8 or more checks; a partial build (just scalafmt + CodeRabbit) is only surfaced when it fails |
 | valid | V | Whether or not the PR is in a valid state (see [PR validity](#pr-validity)) |
 | youtrack-ticket | YT | YouTrack ticket ID (e.g. PROJ-123); `none` if absent |
 | youtrack-project | YP | YouTrack project name (e.g. PROJ); `none` if absent |

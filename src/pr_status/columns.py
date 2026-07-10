@@ -210,7 +210,7 @@ REVIEW_OUTSTANDING_COL = Column(
         if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")).lower(),
 )
 BUILD_COL = Column(
-    "build", "CI", 4, ("b",),
+    "build", "CI", 4, ("ci",),
     cell=lambda ctx, _: ctx.pr.build_symbol,
     sort_key=_sort_key_build,
 )
