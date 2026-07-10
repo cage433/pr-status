@@ -12,6 +12,13 @@ from .report_args import ReportArgs
 if TYPE_CHECKING:
     from .pr_context import PRContext
 
+# The head-commit CI rollup. Our "full" build runs the test/compile/docs suite; a
+# "partial" build is just the two always-on checks (scalafmt + CodeRabbit). Checks
+# only ever get added to the full build, never removed, so any rollup with at least
+# this many contexts is a full build. A passing/running partial build carries no
+# signal worth reporting, so only a *failing* partial is surfaced.
+FULL_BUILD_MIN_CHECKS = 8
+
 
 @dataclass
 class GithubComment:
@@ -46,6 +53,25 @@ class GithubPR:
     reviewers: list[str]
     reviewer_states: dict[str, str]  # login → latest review state (APPROVED, CHANGES_REQUESTED, …)
     labels: set[str] = field(default_factory=set)
+    build_state: str = ""   # head-commit statusCheckRollup state (SUCCESS/FAILURE/ERROR/PENDING/EXPECTED); "" if no rollup
+    build_checks: int = 0   # number of contexts (checks + statuses) in that rollup
+
+    @property
+    def build_symbol(self) -> str:
+        """One-glyph CI state for the PR's head commit:
+          ✓  full build passing
+          ✗  any build (full or partial) failing
+          …  full build still running
+          _  no build, or a passing/running partial build
+        """
+        if self.build_state in ("FAILURE", "ERROR"):
+            return "✗"
+        if self.build_checks >= FULL_BUILD_MIN_CHECKS:
+            if self.build_state == "SUCCESS":
+                return "✓"
+            if self.build_state in ("PENDING", "EXPECTED"):
+                return "…"
+        return "_"
 
     @staticmethod
     def from_graph_ql(nodes: list[Node], config: "Config", args: "ReportArgs") -> list["GithubPR"]:
@@ -81,6 +107,8 @@ class GithubPR:
             if any(p.search(title) for p in config.ignored_title_patterns):
                 continue
             labels = {lbl["name"] for lbl in (node.get("labels") or {}).get("nodes", [])}
+            commit_nodes = (node.get("commits") or {}).get("nodes", [])
+            rollup = (commit_nodes[0].get("commit", {}).get("statusCheckRollup") if commit_nodes else None) or {}
             result.append(GithubPR(
                 number=PRNumber(node["number"]),
                 title=title,
@@ -90,6 +118,8 @@ class GithubPR:
                 reviewers=reviewers,
                 reviewer_states=reviewer_states,
                 labels=labels,
+                build_state=rollup.get("state", ""),
+                build_checks=(rollup.get("contexts") or {}).get("totalCount", 0),
             ))
         return result
 

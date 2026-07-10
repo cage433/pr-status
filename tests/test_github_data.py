@@ -58,15 +58,21 @@ def pr_node(
     reviewers: list[str] | None = None,
     submitted_reviewers: list[str] | None = None,
     submitted_reviewer_states: dict[str, str] | None = None,
+    build_state: str | None = None,
+    build_checks: int = 0,
 ) -> Node:
     review_request_nodes = [{"requestedReviewer": {"login": r}} for r in (reviewers or [])]
     states = submitted_reviewer_states or {}
     review_nodes = [{"author": {"login": r}, "state": states.get(r, "COMMENTED")}
                     for r in (submitted_reviewers or [])]
-    return Node({"number": number, "title": title, "isDraft": is_draft,
-                 "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
-                 "reviewRequests": {"nodes": review_request_nodes},
-                 "reviews": {"nodes": review_nodes}})
+    node = {"number": number, "title": title, "isDraft": is_draft,
+            "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
+            "reviewRequests": {"nodes": review_request_nodes},
+            "reviews": {"nodes": review_nodes}}
+    if build_state is not None:
+        rollup = {"state": build_state, "contexts": {"totalCount": build_checks}}
+        node["commits"] = {"nodes": [{"commit": {"statusCheckRollup": rollup}}]}
+    return Node(node)
 
 
 def comment_node(body: str, author: str = "alice", created_at: str = "2024-01-15T10:00:00Z") -> Node:
@@ -405,6 +411,41 @@ class TestDraftFiltering(unittest.TestCase):
         data = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw)
         self.assertFalse(data.all_prs[0].isDraft)
         self.assertTrue(data.all_prs[1].isDraft)
+
+
+class TestBuildStatus(unittest.TestCase):
+
+    def _pr(self, **kw) -> GithubPR:
+        raw = make_raw(pr_nodes=[pr_node(1, **kw)])
+        return GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
+
+    def test_no_rollup_parsed_as_empty(self):
+        pr = self._pr()
+        self.assertEqual(pr.build_state, "")
+        self.assertEqual(pr.build_checks, 0)
+        self.assertEqual(pr.build_symbol, "_")
+
+    def test_full_build_passing(self):
+        self.assertEqual(self._pr(build_state="SUCCESS", build_checks=9).build_symbol, "✓")
+
+    def test_full_build_running(self):
+        self.assertEqual(self._pr(build_state="PENDING", build_checks=8).build_symbol, "…")
+
+    def test_full_build_failing(self):
+        self.assertEqual(self._pr(build_state="FAILURE", build_checks=9).build_symbol, "✗")
+
+    def test_error_state_treated_as_failure(self):
+        self.assertEqual(self._pr(build_state="ERROR", build_checks=9).build_symbol, "✗")
+
+    def test_partial_build_passing_is_blank(self):
+        self.assertEqual(self._pr(build_state="SUCCESS", build_checks=2).build_symbol, "_")
+
+    def test_partial_build_failing(self):
+        self.assertEqual(self._pr(build_state="FAILURE", build_checks=2).build_symbol, "✗")
+
+    def test_below_threshold_success_is_blank(self):
+        # A full build still registering its checks (count < 8) looks partial until it fills out.
+        self.assertEqual(self._pr(build_state="SUCCESS", build_checks=7).build_symbol, "_")
 
 
 class TestUnresolvedThreadCounts(unittest.TestCase):

@@ -78,6 +78,10 @@ def _sort_key_workdays(ctx: PRContext) -> float:
     wd = ctx.yt_workdays.get(tid)
     return wd if wd is not None else float("inf")
 
+def _sort_key_build(ctx: PRContext) -> int:
+    # Failures first, then running, then passing, then no/partial build.
+    return {"✗": 0, "…": 1, "✓": 2, "_": 3}.get(ctx.pr.build_symbol, 3)
+
 def _sort_key_yt_id(ctx: PRContext) -> int:
     m = _yt_match(ctx)
     return int(m.group(2)) if m else 10**18
@@ -205,6 +209,11 @@ REVIEW_OUTSTANDING_COL = Column(
         ctx.config.author_name(r) for r in ctx.pr.reviewers
         if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")).lower(),
 )
+BUILD_COL = Column(
+    "build", "CI", 4, ("b",),
+    cell=lambda ctx, _: ctx.pr.build_symbol,
+    sort_key=_sort_key_build,
+)
 WORKDAYS_COL = Column(
     "workdays", "WD", 6, ("wd",), is_numeric=True,
     cell=_cell_workdays,
@@ -218,7 +227,7 @@ ALL_COLUMNS: list[Column] = [
     REVIEWERS_COL, UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL,
     LAST_ACTIVITY_COL, AGE_COL, DRAFT_COL,
     YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
-    VALID_COL, REVIEW_OUTSTANDING_COL, WORKDAYS_COL,
+    VALID_COL, REVIEW_OUTSTANDING_COL, BUILD_COL, WORKDAYS_COL,
 ]
 
 TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)

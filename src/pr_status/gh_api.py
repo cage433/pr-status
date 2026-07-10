@@ -53,6 +53,16 @@ query($owner: String!, $repo: String!, $cursor: String) {
         labels(first: 20) {
           nodes { name }
         }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+                contexts { totalCount }
+              }
+            }
+          }
+        }
       }
     }
   }
