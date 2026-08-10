@@ -954,9 +954,24 @@ class TestReviewOutstandingColumn(unittest.TestCase):
         rows = run("pr,ro", data=make_data(prs=[pr]))
         self.assertEqual(rows[0][1], "bob")
 
-    def test_includes_commented_reviewers(self):
+    def test_excludes_commented_reviewers(self):
+        # A comment-only review still discharges the request until someone asks again.
         pr = make_pr(1, reviewers=["alice"],
                      reviewer_states={"alice": "COMMENTED"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "")
+
+    def test_includes_commented_reviewer_who_was_asked_again(self):
+        pr = make_pr(1, reviewers=["alice"],
+                     reviewer_states={"alice": "COMMENTED"},
+                     requested_reviewers={"alice"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "alice")
+
+    def test_includes_reviewer_with_unsubmitted_draft_review(self):
+        # A PENDING review is a draft, so the reviewer has not responded yet.
+        pr = make_pr(1, reviewers=["alice"],
+                     reviewer_states={"alice": "PENDING"})
         rows = run("pr,ro", data=make_data(prs=[pr]))
         self.assertEqual(rows[0][1], "alice")
 

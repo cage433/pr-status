@@ -447,9 +447,13 @@ class TestRequestedReviewers(unittest.TestCase):
         self.assertEqual(pr.reviewers, ["bob"])
         self.assertEqual(pr.outstanding_reviewers, [])
 
-    def test_commenter_without_open_request_stays_outstanding(self):
-        # Deliberately unlike GitHub: a comment-only review does not discharge a review.
+    def test_commenter_without_open_request_is_not_outstanding(self):
         pr = self._pr(submitted_reviewers=["bob"], submitted_reviewer_states={"bob": "COMMENTED"})
+        self.assertEqual(pr.outstanding_reviewers, [])
+
+    def test_commenter_with_open_request_is_outstanding(self):
+        pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
+                      submitted_reviewer_states={"bob": "COMMENTED"})
         self.assertEqual(pr.outstanding_reviewers, ["bob"])
 
 

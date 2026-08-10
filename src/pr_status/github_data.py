@@ -43,6 +43,11 @@ class GithubComment:
         return GithubComment(node.get(timestamp_key, ""), node_login(node), kind, stripped)
 
 
+# States meaning the reviewer has actually reviewed. A PENDING review is an unsubmitted
+# draft, which nobody but its author can see, so it does not count.
+SUBMITTED_REVIEW_STATES = frozenset({"APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"})
+
+
 @dataclass
 class GithubPR:
     number: PRNumber
@@ -60,13 +65,14 @@ class GithubPR:
 
     @property
     def outstanding_reviewers(self) -> list[str]:
-        """Reviewers still expected to respond: those with a review request currently
-        open — which includes a re-request made after they last reviewed — and those
-        who have never approved or requested changes.
+        """Reviewers still expected to respond: those who have yet to submit a review,
+        and those with a review request currently open, which covers a re-request made
+        after an earlier review. Submitting a review of any kind — including a
+        comment-only one — discharges the request until someone asks again.
         """
         return [r for r in self.reviewers
                 if r in self.requested_reviewers
-                or self.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
+                or self.reviewer_states.get(r, "") not in SUBMITTED_REVIEW_STATES]
 
     @property
     def build_symbol(self) -> str:
