@@ -52,11 +52,13 @@ def make_pr(
     reviewers: list[str] | None = None,
     reviewer_states: dict[str, str] | None = None,
     labels: set[str] | None = None,
+    head_ref: str = "",
 ) -> GithubPR:
     return GithubPR(
         number=PRNumber(number), title=title, isDraft=is_draft,
         createdAt=created_at, author=author, reviewers=reviewers or [],
         reviewer_states=reviewer_states or {}, labels=labels or set(),
+        head_ref=head_ref,
     )
 
 
@@ -122,7 +124,22 @@ class TestBasicColumns(unittest.TestCase):
         long_title = "x" * 80
         data = make_data(prs=[make_pr(1, title=long_title)])
         rows = run("title", data=data)
+        self.assertEqual(rows[0][0], "x" * 57 + "…")
+
+    def test_title_at_limit_not_truncated(self):
+        data = make_data(prs=[make_pr(1, title="x" * 58)])
+        rows = run("title", data=data)
         self.assertEqual(rows[0][0], "x" * 58)
+
+    def test_branch_truncated_to_38(self):
+        data = make_data(prs=[make_pr(1, head_ref="b" * 60)])
+        rows = run("branch", data=data)
+        self.assertEqual(rows[0][0], "b" * 37 + "…")
+
+    def test_branch_at_limit_not_truncated(self):
+        data = make_data(prs=[make_pr(1, head_ref="b" * 38)])
+        rows = run("branch", data=data)
+        self.assertEqual(rows[0][0], "b" * 38)
 
     def test_author_column(self):
         data = make_data(prs=[make_pr(1, author="bob")])

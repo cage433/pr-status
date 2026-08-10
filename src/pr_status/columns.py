@@ -1,6 +1,7 @@
 import re
 import sys
 
+from ._util import truncate
 from .column import Column
 from .date_utils import fmt_ts, days_since
 from .pr_context import PRContext
@@ -99,7 +100,7 @@ PULL_REQUEST_COL = Column(
 )
 TITLE_COL = Column(
     "title", "TITLE", 60, ("t",),
-    cell=lambda ctx, _: ctx.pr.title[:58],
+    cell=lambda ctx, _: truncate(ctx.pr.title, 58),
     sort_key=lambda ctx: ctx.pr.title.lower(),
 )
 AUTHOR_COL = Column(
@@ -211,7 +212,7 @@ REVIEW_OUTSTANDING_COL = Column(
 )
 BRANCH_COL = Column(
     "branch", "BRANCH", 40, ("b",),
-    cell=lambda ctx, _: ctx.pr.head_ref[:38],
+    cell=lambda ctx, _: truncate(ctx.pr.head_ref, 38),
     sort_key=lambda ctx: ctx.pr.head_ref.lower(),
 )
 BUILD_COL = Column(

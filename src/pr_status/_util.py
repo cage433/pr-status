@@ -12,6 +12,11 @@ def timing_log(msg: str) -> None:
         f.write("[%s] %s\n" % (datetime.now().isoformat(timespec="seconds"), msg))
 
 
+def truncate(s: str, width: int) -> str:
+    """Cut `s` to at most `width` display characters, marking a cut with an ellipsis."""
+    return s if len(s) <= width else s[:width - 1] + "…"
+
+
 class _Rev:
     """Wraps a value so it sorts in reverse order."""
     __slots__ = ("val",)
