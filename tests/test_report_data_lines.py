@@ -254,6 +254,37 @@ class TestBasicColumns(unittest.TestCase):
         rows = run("reviewers", config=config, data=data)
         self.assertEqual(rows[0][0], "Bob Smith")
 
+    def _tty_reviewers_cell(self, pr: GithubPR) -> str:
+        with patch("sys.stdout.isatty", return_value=True):
+            return run("reviewers", data=make_data(prs=[pr]))[0][0]
+
+    def test_reviewers_column_colours_by_state_on_a_tty(self):
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"})
+        self.assertEqual(self._tty_reviewers_cell(pr), "\033[32mbob\033[0m")
+
+    def test_reviewers_column_italicises_re_requested_reviewer(self):
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
+                     requested_reviewers={"bob"})
+        self.assertEqual(self._tty_reviewers_cell(pr), "\033[32m\033[3mbob\033[0m")
+
+    def test_reviewers_column_no_italics_for_first_time_request(self):
+        # An open request from someone who has never reviewed is not a re-request.
+        pr = make_pr(1, reviewers=["bob"], requested_reviewers={"bob"})
+        self.assertEqual(self._tty_reviewers_cell(pr), "bob")
+
+    def test_reviewers_column_no_italics_for_unsubmitted_draft_review(self):
+        # A PENDING review is a draft the reviewer has not submitted, so the open
+        # request is a first ask, not a re-ask.
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "PENDING"},
+                     requested_reviewers={"bob"})
+        self.assertEqual(self._tty_reviewers_cell(pr), "bob")
+
+    def test_reviewers_column_plain_when_not_a_tty(self):
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
+                     requested_reviewers={"bob"})
+        rows = run("reviewers", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][0], "bob")
+
     def test_unresolved_all_column(self):
         data = make_data(prs=[make_pr(1)], unresolved_counts={PRNumber(1): (3, 2, 1)})
         rows = run("uc", data=data)

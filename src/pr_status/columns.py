@@ -31,17 +31,29 @@ def _cell_loc(ctx: PRContext, _: bool) -> str:
     adds, dels = ctx.loc
     return "+%d/-%d" % (adds, dels) if (adds or dels) else "-"
 
+_REVIEW_STATE_COLOURS = {
+    "APPROVED":          "\033[32m",        # green
+    "CHANGES_REQUESTED": "\033[31m",        # red
+    "COMMENTED":         "\033[38;5;208m",  # orange
+}
+_ITALIC = "\033[3m"
+_RESET  = "\033[0m"
+# States meaning the reviewer has actually reviewed. A PENDING review is an unsubmitted
+# draft, which nobody but its author can see, so it does not count.
+_SUBMITTED_REVIEW_STATES = frozenset({"APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"})
+
 def _cell_reviewers(ctx: PRContext, _: bool) -> str:
-    GREEN, RED, ORANGE, RESET = "\033[32m", "\033[31m", "\033[38;5;208m", "\033[0m"
     use_color = sys.stdout.isatty()
     parts = []
     for r in ctx.pr.reviewers:
         rname = ctx.config.author_name(r)
         state = ctx.pr.reviewer_states.get(r, "")
-        if use_color and state == "APPROVED":            parts.append(GREEN + rname + RESET)
-        elif use_color and state == "CHANGES_REQUESTED": parts.append(RED + rname + RESET)
-        elif use_color and state == "COMMENTED":         parts.append(ORANGE + rname + RESET)
-        else:                                            parts.append(rname)
+        codes = _REVIEW_STATE_COLOURS.get(state, "") if use_color else ""
+        # An open review request against someone who has already reviewed means they
+        # have been asked to look again.
+        if use_color and state in _SUBMITTED_REVIEW_STATES and r in ctx.pr.requested_reviewers:
+            codes += _ITALIC
+        parts.append((codes + rname + _RESET) if codes else rname)
     return ", ".join(parts)
 
 def _cell_valid(ctx: PRContext, _: bool) -> str:
