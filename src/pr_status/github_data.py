@@ -53,9 +53,20 @@ class GithubPR:
     reviewers: list[str]
     reviewer_states: dict[str, str]  # login → latest review state (APPROVED, CHANGES_REQUESTED, …)
     labels: set[str] = field(default_factory=set)
+    requested_reviewers: set[str] = field(default_factory=set)  # logins with a review request currently open
     head_ref: str = ""      # headRefName, the PR's source branch
     build_state: str = ""   # head-commit statusCheckRollup state (SUCCESS/FAILURE/ERROR/PENDING/EXPECTED); "" if no rollup
     build_checks: int = 0   # number of contexts (checks + statuses) in that rollup
+
+    @property
+    def outstanding_reviewers(self) -> list[str]:
+        """Reviewers still expected to respond: those with a review request currently
+        open — which includes a re-request made after they last reviewed — and those
+        who have never approved or requested changes.
+        """
+        return [r for r in self.reviewers
+                if r in self.requested_reviewers
+                or self.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")]
 
     @property
     def build_symbol(self) -> str:
@@ -99,6 +110,9 @@ class GithubPR:
                 if login and login not in seen and (args.include_ai or not config.is_ai_author(login)):
                     seen.add(login)
                     reviewers.append(login)
+            # Snapshot the open review requests before the loop below adds reviewers who
+            # are only on the PR by virtue of having submitted a review.
+            requested_reviewers = set(reviewers)
             for login in reviewer_states:
                 if login not in seen:
                     seen.add(login)
@@ -119,6 +133,7 @@ class GithubPR:
                 reviewers=reviewers,
                 reviewer_states=reviewer_states,
                 labels=labels,
+                requested_reviewers=requested_reviewers,
                 head_ref=node.get("headRefName", ""),
                 build_state=rollup.get("state", ""),
                 build_checks=(rollup.get("contexts") or {}).get("totalCount", 0),

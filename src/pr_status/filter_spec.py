@@ -94,8 +94,7 @@ class ColumnFilterSpec(FilterSpec):
             matched = (not ctx.pr.reviewers and "none" in self.values) or bool(reviewer_names & self.values)
             return not matched if self.negate else matched
         if self.column == REVIEW_OUTSTANDING_COL:
-            outstanding = {ctx.config.author_name(r) for r in ctx.pr.reviewers
-                           if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")}
+            outstanding = {ctx.config.author_name(r) for r in ctx.pr.outstanding_reviewers}
             matched = (not outstanding and "none" in self.values) or bool(outstanding & self.values)
             return not matched if self.negate else matched
         val = str(ctx.pr.number) if self.column == PULL_REQUEST_COL else self.column.cell(ctx, False)

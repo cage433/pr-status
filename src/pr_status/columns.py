@@ -203,12 +203,8 @@ VALID_COL = Column(
 )
 REVIEW_OUTSTANDING_COL = Column(
     "review-outstanding", "RO", 20, ("ro",),
-    cell=lambda ctx, _: ", ".join(
-        ctx.config.author_name(r) for r in ctx.pr.reviewers
-        if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")),
-    sort_key=lambda ctx: ", ".join(
-        ctx.config.author_name(r) for r in ctx.pr.reviewers
-        if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")).lower(),
+    cell=lambda ctx, _: ", ".join(ctx.config.author_name(r) for r in ctx.pr.outstanding_reviewers),
+    sort_key=lambda ctx: ", ".join(ctx.config.author_name(r) for r in ctx.pr.outstanding_reviewers).lower(),
 )
 BRANCH_COL = Column(
     "branch", "BRANCH", 40, ("b",),

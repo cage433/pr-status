@@ -53,11 +53,13 @@ def make_pr(
     reviewer_states: dict[str, str] | None = None,
     labels: set[str] | None = None,
     head_ref: str = "",
+    requested_reviewers: set[str] | None = None,
 ) -> GithubPR:
     return GithubPR(
         number=PRNumber(number), title=title, isDraft=is_draft,
         createdAt=created_at, author=author, reviewers=reviewers or [],
         reviewer_states=reviewer_states or {}, labels=labels or set(),
+        requested_reviewers=requested_reviewers or set(),
         head_ref=head_ref,
     )
 
@@ -962,6 +964,20 @@ class TestReviewOutstandingColumn(unittest.TestCase):
         rows = run("pr", filters=["ro!=bob"], data=make_data(prs=[pr1, pr2]))
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
+
+    def test_re_requested_approver_is_outstanding(self):
+        # bob approved, then was asked to review again: the open request outranks the
+        # stale APPROVED state, as it does on GitHub.
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
+                     requested_reviewers={"bob"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "bob")
+
+    def test_filter_ro_matches_re_requested_approver(self):
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
+                     requested_reviewers={"bob"})
+        rows = run("pr", filters=["ro=bob"], data=make_data(prs=[pr]))
+        self.assertEqual(len(rows), 1)
 
     def test_filter_ro_none_matches_when_no_outstanding(self):
         pr1 = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"})

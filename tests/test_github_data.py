@@ -416,6 +416,43 @@ class TestDraftFiltering(unittest.TestCase):
         self.assertTrue(data.all_prs[1].isDraft)
 
 
+class TestRequestedReviewers(unittest.TestCase):
+
+    def _pr(self, **kw) -> GithubPR:
+        raw = make_raw(pr_nodes=[pr_node(1, **kw)])
+        return GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
+
+    # pr_node's default author is alice, and a PR author's own reviews are discarded,
+    # so reviewers here are bob and carol.
+
+    def test_open_requests_recorded(self):
+        pr = self._pr(reviewers=["bob", "carol"])
+        self.assertEqual(pr.requested_reviewers, {"bob", "carol"})
+
+    def test_review_authors_are_not_open_requests(self):
+        # carol is on the PR only because she submitted a review, so she has no open request.
+        pr = self._pr(reviewers=["bob"], submitted_reviewers=["carol"])
+        self.assertEqual(pr.requested_reviewers, {"bob"})
+        self.assertEqual(pr.reviewers, ["bob", "carol"])
+
+    def test_re_requested_approver_stays_outstanding(self):
+        pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
+                      submitted_reviewer_states={"bob": "APPROVED"})
+        self.assertEqual(pr.reviewer_states["bob"], "APPROVED")
+        self.assertEqual(pr.outstanding_reviewers, ["bob"])
+
+    def test_approver_without_open_request_is_not_outstanding(self):
+        pr = self._pr(submitted_reviewers=["bob"], submitted_reviewer_states={"bob": "APPROVED"})
+        self.assertEqual(pr.requested_reviewers, set())
+        self.assertEqual(pr.reviewers, ["bob"])
+        self.assertEqual(pr.outstanding_reviewers, [])
+
+    def test_commenter_without_open_request_stays_outstanding(self):
+        # Deliberately unlike GitHub: a comment-only review does not discharge a review.
+        pr = self._pr(submitted_reviewers=["bob"], submitted_reviewer_states={"bob": "COMMENTED"})
+        self.assertEqual(pr.outstanding_reviewers, ["bob"])
+
+
 class TestHeadRef(unittest.TestCase):
 
     def _pr(self, **kw) -> GithubPR:
