@@ -80,7 +80,7 @@ These should be written as a comma separated list of names or aliases. The avail
 | comment-time | CT | Timestamp of comment (use with C or CA) |
 | comment-author | CA | Author of comment (use with C or CT) |
 | reviewers | R | Reviewer names; `R=none` matches PRs with no reviewers. Names are shown in green/orange/red if the reviewer has approved/commented on/rejected the PR, and in italics if a review has been requested from them again since |
-| review-outstanding | RO | Reviewers who have yet to submit a review, plus anyone asked to review again since their last one; `RO=none` matches PRs with none outstanding |
+| review-outstanding | RO | Reviewers who have yet to submit a review, plus anyone asked to review again since their last one. Comments do not count as a review: GitHub records a standalone comment as a review with no summary, and those are ignored. `RO=none` matches PRs with none outstanding |
 | unresolved (all) | UC | Unresolved review threads (all authors) |
 | unresolved (human) | UH | Unresolved review threads (human authors only) |
 | unresolved (ai) | UA | Unresolved review threads (AI authors only) |

@@ -43,9 +43,17 @@ class GithubComment:
         return GithubComment(node.get(timestamp_key, ""), node_login(node), kind, stripped)
 
 
-# States meaning the reviewer has actually reviewed. A PENDING review is an unsubmitted
-# draft, which nobody but its author can see, so it does not count.
-SUBMITTED_REVIEW_STATES = frozenset({"APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"})
+def _is_submitted_review(state: str, body: str) -> bool:
+    """Whether a review node is a review its author deliberately submitted.
+
+    GitHub wraps a standalone comment on a line of code in a review of its own, with
+    state COMMENTED and no body. Those are comments rather than reviews; a COMMENTED
+    review that went through the review flow carries the summary typed alongside it.
+    A PENDING review is a draft its author has not submitted at all.
+    """
+    if state in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+        return True
+    return state == "COMMENTED" and bool(body.strip())
 
 
 @dataclass
@@ -59,6 +67,7 @@ class GithubPR:
     reviewer_states: dict[str, str]  # login → latest review state (APPROVED, CHANGES_REQUESTED, …)
     labels: set[str] = field(default_factory=set)
     requested_reviewers: set[str] = field(default_factory=set)  # logins with a review request currently open
+    reviewed_reviewers: set[str] = field(default_factory=set)   # logins who have submitted a review
     head_ref: str = ""      # headRefName, the PR's source branch
     build_state: str = ""   # head-commit statusCheckRollup state (SUCCESS/FAILURE/ERROR/PENDING/EXPECTED); "" if no rollup
     build_checks: int = 0   # number of contexts (checks + statuses) in that rollup
@@ -67,12 +76,11 @@ class GithubPR:
     def outstanding_reviewers(self) -> list[str]:
         """Reviewers still expected to respond: those who have yet to submit a review,
         and those with a review request currently open, which covers a re-request made
-        after an earlier review. Submitting a review of any kind — including a
-        comment-only one — discharges the request until someone asks again.
+        after an earlier review. Only submitted reviews discharge a request — leaving
+        comments on a PR, however many, does not.
         """
         return [r for r in self.reviewers
-                if r in self.requested_reviewers
-                or self.reviewer_states.get(r, "") not in SUBMITTED_REVIEW_STATES]
+                if r in self.requested_reviewers or r not in self.reviewed_reviewers]
 
     @property
     def build_symbol(self) -> str:
@@ -102,11 +110,14 @@ class GithubPR:
 
             # Latest state per reviewer (reviews are in chronological order)
             reviewer_states: dict[str, str] = {}
+            reviewed_reviewers: set[str] = set()
             for rn in review_nodes:
                 login = (rn.get("author") or {}).get("login", "")
                 state = rn.get("state", "")
                 if login and login != pr_author and (args.include_ai or not config.is_ai_author(login)):
                     reviewer_states[login] = state
+                    if _is_submitted_review(state, rn.get("bodyText", "")):
+                        reviewed_reviewers.add(login)
 
             seen: set[str] = set()
             reviewers: list[str] = []
@@ -140,6 +151,7 @@ class GithubPR:
                 reviewer_states=reviewer_states,
                 labels=labels,
                 requested_reviewers=requested_reviewers,
+                reviewed_reviewers=reviewed_reviewers,
                 head_ref=node.get("headRefName", ""),
                 build_state=rollup.get("state", ""),
                 build_checks=(rollup.get("contexts") or {}).get("totalCount", 0),

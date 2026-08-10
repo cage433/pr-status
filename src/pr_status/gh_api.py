@@ -49,6 +49,7 @@ query($owner: String!, $repo: String!, $cursor: String) {
           nodes {
             author { login }
             state
+            bodyText
           }
         }
         labels(first: 20) {

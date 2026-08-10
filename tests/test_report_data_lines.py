@@ -54,12 +54,19 @@ def make_pr(
     labels: set[str] | None = None,
     head_ref: str = "",
     requested_reviewers: set[str] | None = None,
+    reviewed_reviewers: set[str] | None = None,
 ) -> GithubPR:
+    states = reviewer_states or {}
+    if reviewed_reviewers is None:
+        # A named state other than the unsubmitted PENDING means the reviewer reviewed.
+        # Pass reviewed_reviewers explicitly to model someone who only left comments.
+        reviewed_reviewers = {r for r, s in states.items() if s and s != "PENDING"}
     return GithubPR(
         number=PRNumber(number), title=title, isDraft=is_draft,
         createdAt=created_at, author=author, reviewers=reviewers or [],
-        reviewer_states=reviewer_states or {}, labels=labels or set(),
+        reviewer_states=states, labels=labels or set(),
         requested_reviewers=requested_reviewers or set(),
+        reviewed_reviewers=reviewed_reviewers,
         head_ref=head_ref,
     )
 
@@ -965,6 +972,13 @@ class TestReviewOutstandingColumn(unittest.TestCase):
         pr = make_pr(1, reviewers=["alice"],
                      reviewer_states={"alice": "COMMENTED"},
                      requested_reviewers={"alice"})
+        rows = run("pr,ro", data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][1], "alice")
+
+    def test_includes_reviewer_who_only_left_comments(self):
+        # Comments do not count as a review, however many there are.
+        pr = make_pr(1, reviewers=["alice"],
+                     reviewer_states={"alice": "COMMENTED"}, reviewed_reviewers=set())
         rows = run("pr,ro", data=make_data(prs=[pr]))
         self.assertEqual(rows[0][1], "alice")
 

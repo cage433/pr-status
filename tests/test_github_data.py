@@ -61,10 +61,13 @@ def pr_node(
     build_state: str | None = None,
     build_checks: int = 0,
     head_ref: str | None = None,
+    review_bodies: dict[str, str] | None = None,
 ) -> Node:
     review_request_nodes = [{"requestedReviewer": {"login": r}} for r in (reviewers or [])]
     states = submitted_reviewer_states or {}
-    review_nodes = [{"author": {"login": r}, "state": states.get(r, "COMMENTED")}
+    bodies = review_bodies or {}
+    review_nodes = [{"author": {"login": r}, "state": states.get(r, "COMMENTED"),
+                     "bodyText": bodies.get(r, "")}
                     for r in (submitted_reviewers or [])]
     node = {"number": number, "title": title, "isDraft": is_draft,
             "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
@@ -447,14 +450,53 @@ class TestRequestedReviewers(unittest.TestCase):
         self.assertEqual(pr.reviewers, ["bob"])
         self.assertEqual(pr.outstanding_reviewers, [])
 
-    def test_commenter_without_open_request_is_not_outstanding(self):
-        pr = self._pr(submitted_reviewers=["bob"], submitted_reviewer_states={"bob": "COMMENTED"})
-        self.assertEqual(pr.outstanding_reviewers, [])
-
-    def test_commenter_with_open_request_is_outstanding(self):
+    def test_standalone_comment_is_not_a_submitted_review(self):
+        # GitHub wraps a lone comment on a line of code in a bodiless COMMENTED review.
         pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
                       submitted_reviewer_states={"bob": "COMMENTED"})
+        self.assertEqual(pr.reviewed_reviewers, set())
         self.assertEqual(pr.outstanding_reviewers, ["bob"])
+
+    def test_comment_review_with_a_summary_is_submitted(self):
+        pr = self._pr(submitted_reviewers=["bob"],
+                      submitted_reviewer_states={"bob": "COMMENTED"},
+                      review_bodies={"bob": "a few thoughts"})
+        self.assertEqual(pr.reviewed_reviewers, {"bob"})
+        self.assertEqual(pr.outstanding_reviewers, [])
+
+    def test_whitespace_only_summary_is_not_submitted(self):
+        pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
+                      submitted_reviewer_states={"bob": "COMMENTED"},
+                      review_bodies={"bob": "   \n "})
+        self.assertEqual(pr.reviewed_reviewers, set())
+
+    def test_approval_needs_no_summary_to_count(self):
+        pr = self._pr(submitted_reviewers=["bob"], submitted_reviewer_states={"bob": "APPROVED"})
+        self.assertEqual(pr.reviewed_reviewers, {"bob"})
+        self.assertEqual(pr.outstanding_reviewers, [])
+
+    def test_draft_review_is_not_submitted(self):
+        pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
+                      submitted_reviewer_states={"bob": "PENDING"},
+                      review_bodies={"bob": "half written"})
+        self.assertEqual(pr.reviewed_reviewers, set())
+        self.assertEqual(pr.outstanding_reviewers, ["bob"])
+
+    def test_later_comment_does_not_undo_an_earlier_review(self):
+        # The latest state is COMMENTED, but the approval still stands as a review.
+        raw = make_raw(pr_nodes=[Node({
+            "number": 1, "title": "Test PR", "isDraft": False,
+            "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"},
+            "reviewRequests": {"nodes": []},
+            "reviews": {"nodes": [
+                {"author": {"login": "bob"}, "state": "APPROVED",  "bodyText": "looks good"},
+                {"author": {"login": "bob"}, "state": "COMMENTED", "bodyText": ""},
+            ]},
+        })])
+        pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
+        self.assertEqual(pr.reviewer_states["bob"], "COMMENTED")
+        self.assertEqual(pr.reviewed_reviewers, {"bob"})
+        self.assertEqual(pr.outstanding_reviewers, [])
 
 
 class TestHeadRef(unittest.TestCase):
