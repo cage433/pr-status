@@ -210,8 +210,8 @@ REVIEW_OUTSTANDING_COL = Column(
         if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")).lower(),
 )
 BRANCH_COL = Column(
-    "branch", "BRANCH", 20, ("b",),
-    cell=lambda ctx, _: ctx.pr.head_ref,
+    "branch", "BRANCH", 40, ("b",),
+    cell=lambda ctx, _: ctx.pr.head_ref[:38],
     sort_key=lambda ctx: ctx.pr.head_ref.lower(),
 )
 BUILD_COL = Column(
