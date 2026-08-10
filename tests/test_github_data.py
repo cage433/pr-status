@@ -60,6 +60,7 @@ def pr_node(
     submitted_reviewer_states: dict[str, str] | None = None,
     build_state: str | None = None,
     build_checks: int = 0,
+    head_ref: str | None = None,
 ) -> Node:
     review_request_nodes = [{"requestedReviewer": {"login": r}} for r in (reviewers or [])]
     states = submitted_reviewer_states or {}
@@ -72,6 +73,8 @@ def pr_node(
     if build_state is not None:
         rollup = {"state": build_state, "contexts": {"totalCount": build_checks}}
         node["commits"] = {"nodes": [{"commit": {"statusCheckRollup": rollup}}]}
+    if head_ref is not None:
+        node["headRefName"] = head_ref
     return Node(node)
 
 
@@ -411,6 +414,19 @@ class TestDraftFiltering(unittest.TestCase):
         data = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw)
         self.assertFalse(data.all_prs[0].isDraft)
         self.assertTrue(data.all_prs[1].isDraft)
+
+
+class TestHeadRef(unittest.TestCase):
+
+    def _pr(self, **kw) -> GithubPR:
+        raw = make_raw(pr_nodes=[pr_node(1, **kw)])
+        return GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
+
+    def test_head_ref_parsed(self):
+        self.assertEqual(self._pr(head_ref="feature/PROJ-123").head_ref, "feature/PROJ-123")
+
+    def test_missing_head_ref_is_empty(self):
+        self.assertEqual(self._pr().head_ref, "")
 
 
 class TestBuildStatus(unittest.TestCase):

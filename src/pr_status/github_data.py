@@ -53,6 +53,7 @@ class GithubPR:
     reviewers: list[str]
     reviewer_states: dict[str, str]  # login → latest review state (APPROVED, CHANGES_REQUESTED, …)
     labels: set[str] = field(default_factory=set)
+    head_ref: str = ""      # headRefName, the PR's source branch
     build_state: str = ""   # head-commit statusCheckRollup state (SUCCESS/FAILURE/ERROR/PENDING/EXPECTED); "" if no rollup
     build_checks: int = 0   # number of contexts (checks + statuses) in that rollup
 
@@ -118,6 +119,7 @@ class GithubPR:
                 reviewers=reviewers,
                 reviewer_states=reviewer_states,
                 labels=labels,
+                head_ref=node.get("headRefName", ""),
                 build_state=rollup.get("state", ""),
                 build_checks=(rollup.get("contexts") or {}).get("totalCount", 0),
             ))

@@ -4,6 +4,7 @@ from pr_status.column import Column, _ListError
 from pr_status.columns import (
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, NUM_COMMENTS_COL,
     CREATION_DATE_COL, LAST_COMMENT_TIME_COL, UNRESOLVED_ALL_COL, WORKDAYS_COL,
+    BRANCH_COL, BUILD_COL,
 )
 from pr_status.column_display import ColumnDisplay
 from pr_status.filter_spec import ColumnFilterSpec, ComparisonFilterSpec
@@ -42,6 +43,13 @@ class TestResolveColumns(unittest.TestCase):
         # 'a' is a prefix of both 'author' and 'age', but resolves unambiguously via alias
         spec = resolve("a")
         self.assertEqual([c.name for c in spec.cols], ["author"])
+
+    def test_branch_alias_beats_build_prefix(self):
+        # 'b' is a prefix of both 'branch' and 'build', and is branch's alias, so it
+        # resolves to branch; build stays reachable via its own alias or a longer prefix.
+        self.assertEqual(Column.resolve("b"), BRANCH_COL)
+        self.assertEqual(Column.resolve("bu"), BUILD_COL)
+        self.assertEqual(Column.resolve("ci"), BUILD_COL)
 
     def test_column_prefix_match(self):
         spec = resolve("tit,auth,loc")

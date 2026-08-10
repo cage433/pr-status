@@ -33,6 +33,7 @@ query($owner: String!, $repo: String!, $cursor: String) {
         title
         isDraft
         createdAt
+        headRefName
         author {
           login
         }

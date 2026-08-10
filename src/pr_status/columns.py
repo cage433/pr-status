@@ -209,6 +209,11 @@ REVIEW_OUTSTANDING_COL = Column(
         ctx.config.author_name(r) for r in ctx.pr.reviewers
         if ctx.pr.reviewer_states.get(r, "") not in ("APPROVED", "CHANGES_REQUESTED")).lower(),
 )
+BRANCH_COL = Column(
+    "branch", "BRANCH", 20, ("b",),
+    cell=lambda ctx, _: ctx.pr.head_ref,
+    sort_key=lambda ctx: ctx.pr.head_ref.lower(),
+)
 BUILD_COL = Column(
     "build", "CI", 4, ("ci",),
     cell=lambda ctx, _: ctx.pr.build_symbol,
@@ -227,7 +232,7 @@ ALL_COLUMNS: list[Column] = [
     REVIEWERS_COL, UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL,
     LAST_ACTIVITY_COL, AGE_COL, DRAFT_COL,
     YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
-    VALID_COL, REVIEW_OUTSTANDING_COL, BUILD_COL, WORKDAYS_COL,
+    VALID_COL, REVIEW_OUTSTANDING_COL, BRANCH_COL, BUILD_COL, WORKDAYS_COL,
 ]
 
 TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)
