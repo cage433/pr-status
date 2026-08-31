@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 from .timely import fetch_events
 
-_YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
+_YT_RE = re.compile(r'^([A-Z][A-Za-z0-9]*)-(\d+)\b')
 
 CACHE_BASE  = os.path.expanduser("~/.cache/pr-status/timely")
 CACHE_START = date(2025, 1, 1)

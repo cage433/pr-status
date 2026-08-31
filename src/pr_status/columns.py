@@ -6,7 +6,7 @@ from .column import Column
 from .date_utils import fmt_ts, days_since
 from .pr_context import PRContext
 
-_YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
+_YT_RE = re.compile(r'^([A-Z][A-Za-z0-9]*)-(\d+)\b')
 
 
 def _last_comment(ctx: PRContext, user_only: bool = False) -> str:

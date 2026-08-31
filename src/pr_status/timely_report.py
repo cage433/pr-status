@@ -34,7 +34,7 @@ ALL_COLUMNS: list[_TCol] = [
 _COL_BY_NAME:   dict[str, _TCol] = {c.name: c      for c in ALL_COLUMNS}
 _ALIAS_TO_NAME: dict[str, str]   = {a: c.name for c in ALL_COLUMNS for a in c.aliases}
 
-_YT_RE = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]*)-(\d+)')
+_YT_RE = re.compile(r'^([A-Z][A-Za-z0-9]*)-(\d+)\b')
 
 _MONTH_NAMES = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,

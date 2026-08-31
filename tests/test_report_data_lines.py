@@ -736,25 +736,30 @@ class TestYTColumn(unittest.TestCase):
         rows = run("yt", data=data)
         self.assertEqual(rows[0][0], "PROJ-123")
 
-    def test_yt_extracts_lowercase_ticket_id(self):
+    def test_yt_none_for_lowercase_project_name(self):
         data = make_data(prs=[make_pr(1, title="proj-42 fix something")])
         rows = run("yt", data=data)
-        self.assertEqual(rows[0][0], "proj-42")
+        self.assertEqual(rows[0][0], "none")
+
+    def test_yt_none_for_branch_style_title_ending_in_digits(self):
+        data = make_data(prs=[make_pr(1, title="risk-splitting-on-194 something")])
+        rows = run("yt", data=data)
+        self.assertEqual(rows[0][0], "none")
 
     def test_yt_extracts_mixed_case_ticket_id(self):
         data = make_data(prs=[make_pr(1, title="MyProj-7 do a thing")])
         rows = run("yt", data=data)
         self.assertEqual(rows[0][0], "MyProj-7")
 
-    def test_yt_extracts_alphanumeric_project_name(self):
+    def test_yt_none_for_lowercase_alphanumeric_project_name(self):
         data = make_data(prs=[make_pr(1, title="proj2b-99 stuff")])
         rows = run("yt", data=data)
-        self.assertEqual(rows[0][0], "proj2b-99")
+        self.assertEqual(rows[0][0], "none")
 
-    def test_yt_extracts_project_name_with_internal_dashes(self):
+    def test_yt_none_for_project_name_with_internal_dashes(self):
         data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
         rows = run("yt", data=data)
-        self.assertEqual(rows[0][0], "MY-PROJECT-456")
+        self.assertEqual(rows[0][0], "none")
 
     def test_yt_none_when_no_ticket_id(self):
         data = make_data(prs=[make_pr(1, title="fix something without ticket")])
@@ -807,10 +812,10 @@ class TestYTColumn(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("1", rows[0][0])
 
-    def test_yt_full_ticket_from_dashed_project(self):
+    def test_yt_none_for_full_ticket_from_dashed_project(self):
         data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
         rows = run("yt", data=data)
-        self.assertEqual(rows[0][0], "MY-PROJECT-456")
+        self.assertEqual(rows[0][0], "none")
 
 
 class TestYPColumn(unittest.TestCase):
@@ -820,10 +825,10 @@ class TestYPColumn(unittest.TestCase):
         rows = run("yp", data=data)
         self.assertEqual(rows[0][0], "PROJ")
 
-    def test_yp_extracts_dashed_project_name(self):
+    def test_yp_none_for_dashed_project_name(self):
         data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
         rows = run("yp", data=data)
-        self.assertEqual(rows[0][0], "MY-PROJECT")
+        self.assertEqual(rows[0][0], "none")
 
     def test_yp_none_when_no_ticket_id(self):
         data = make_data(prs=[make_pr(1, title="no ticket here")])
@@ -870,10 +875,10 @@ class TestYIColumn(unittest.TestCase):
         rows = run("yi", data=data)
         self.assertEqual(rows[0][0], "123")
 
-    def test_yi_extracts_id_from_dashed_project(self):
+    def test_yi_none_for_dashed_project(self):
         data = make_data(prs=[make_pr(1, title="MY-PROJECT-456 description")])
         rows = run("yi", data=data)
-        self.assertEqual(rows[0][0], "456")
+        self.assertEqual(rows[0][0], "none")
 
     def test_yi_none_when_no_ticket_id(self):
         data = make_data(prs=[make_pr(1, title="no ticket here")])
