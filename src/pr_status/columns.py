@@ -36,21 +36,22 @@ _REVIEW_STATE_COLOURS = {
     "CHANGES_REQUESTED": "\033[31m",        # red
     "COMMENTED":         "\033[38;5;208m",  # orange
 }
-_ITALIC = "\033[3m"
-_RESET  = "\033[0m"
+_RESET = "\033[0m"
 
 def _cell_reviewers(ctx: PRContext, _: bool) -> str:
     use_color = sys.stdout.isatty()
     parts = []
     for r in ctx.pr.reviewers:
         rname = ctx.config.author_name(r)
-        state = ctx.pr.reviewer_states.get(r, "")
-        codes = _REVIEW_STATE_COLOURS.get(state, "") if use_color else ""
+        reviews_submitted = ctx.pr.review_counts.get(r, 0)
         # An open review request against someone who has already reviewed means they
-        # have been asked to look again.
-        if use_color and r in ctx.pr.reviewed_reviewers and r in ctx.pr.requested_reviewers:
-            codes += _ITALIC
-        parts.append((codes + rname + _RESET) if codes else rname)
+        # have been asked to look again. The colour of their last review says nothing
+        # about the one now owed, so the number of that pending review replaces it.
+        if reviews_submitted and r in ctx.pr.requested_reviewers:
+            parts.append("%s (%d)" % (rname, reviews_submitted + 1))
+            continue
+        colour = _REVIEW_STATE_COLOURS.get(ctx.pr.reviewer_states.get(r, ""), "") if use_color else ""
+        parts.append((colour + rname + _RESET) if colour else rname)
     return ", ".join(parts)
 
 def _cell_valid(ctx: PRContext, _: bool) -> str:

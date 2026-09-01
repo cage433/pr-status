@@ -475,6 +475,27 @@ class TestRequestedReviewers(unittest.TestCase):
         self.assertEqual(pr.reviewed_reviewers, {"bob"})
         self.assertEqual(pr.outstanding_reviewers, [])
 
+    def test_review_counts_tally_repeated_submitted_reviews(self):
+        raw = make_raw(pr_nodes=[Node({
+            "number": 1, "title": "Test PR", "isDraft": False,
+            "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"},
+            "reviewRequests": {"nodes": []},
+            "reviews": {"nodes": [
+                {"author": {"login": "bob"}, "state": "CHANGES_REQUESTED", "bodyText": "no"},
+                {"author": {"login": "bob"}, "state": "COMMENTED",         "bodyText": ""},
+                {"author": {"login": "bob"}, "state": "APPROVED",          "bodyText": ""},
+            ]},
+        })])
+        pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
+        # The bodiless COMMENTED review is a standalone code comment, so does not count.
+        self.assertEqual(pr.review_counts, {"bob": 2})
+        self.assertEqual(pr.reviewed_reviewers, {"bob"})
+
+    def test_review_counts_omit_a_reviewer_who_has_never_submitted(self):
+        pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
+                      submitted_reviewer_states={"bob": "PENDING"})
+        self.assertEqual(pr.review_counts, {})
+
     def test_draft_review_is_not_submitted(self):
         pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
                       submitted_reviewer_states={"bob": "PENDING"},

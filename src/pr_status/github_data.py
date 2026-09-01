@@ -67,10 +67,15 @@ class GithubPR:
     reviewer_states: dict[str, str]  # login → latest review state (APPROVED, CHANGES_REQUESTED, …)
     labels: set[str] = field(default_factory=set)
     requested_reviewers: set[str] = field(default_factory=set)  # logins with a review request currently open
-    reviewed_reviewers: set[str] = field(default_factory=set)   # logins who have submitted a review
+    review_counts: dict[str, int] = field(default_factory=dict)  # login → number of submitted reviews
     head_ref: str = ""      # headRefName, the PR's source branch
     build_state: str = ""   # head-commit statusCheckRollup state (SUCCESS/FAILURE/ERROR/PENDING/EXPECTED); "" if no rollup
     build_checks: int = 0   # number of contexts (checks + statuses) in that rollup
+
+    @property
+    def reviewed_reviewers(self) -> set[str]:
+        """Logins who have submitted at least one review."""
+        return set(self.review_counts)
 
     @property
     def outstanding_reviewers(self) -> list[str]:
@@ -110,14 +115,14 @@ class GithubPR:
 
             # Latest state per reviewer (reviews are in chronological order)
             reviewer_states: dict[str, str] = {}
-            reviewed_reviewers: set[str] = set()
+            review_counts: dict[str, int] = {}
             for rn in review_nodes:
                 login = (rn.get("author") or {}).get("login", "")
                 state = rn.get("state", "")
                 if login and login != pr_author and (args.include_ai or not config.is_ai_author(login)):
                     reviewer_states[login] = state
                     if _is_submitted_review(state, rn.get("bodyText", "")):
-                        reviewed_reviewers.add(login)
+                        review_counts[login] = review_counts.get(login, 0) + 1
 
             seen: set[str] = set()
             reviewers: list[str] = []
@@ -151,7 +156,7 @@ class GithubPR:
                 reviewer_states=reviewer_states,
                 labels=labels,
                 requested_reviewers=requested_reviewers,
-                reviewed_reviewers=reviewed_reviewers,
+                review_counts=review_counts,
                 head_ref=node.get("headRefName", ""),
                 build_state=rollup.get("state", ""),
                 build_checks=(rollup.get("contexts") or {}).get("totalCount", 0),

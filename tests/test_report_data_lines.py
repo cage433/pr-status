@@ -54,19 +54,20 @@ def make_pr(
     labels: set[str] | None = None,
     head_ref: str = "",
     requested_reviewers: set[str] | None = None,
-    reviewed_reviewers: set[str] | None = None,
+    review_counts: dict[str, int] | None = None,
 ) -> GithubPR:
     states = reviewer_states or {}
-    if reviewed_reviewers is None:
-        # A named state other than the unsubmitted PENDING means the reviewer reviewed.
-        # Pass reviewed_reviewers explicitly to model someone who only left comments.
-        reviewed_reviewers = {r for r, s in states.items() if s and s != "PENDING"}
+    if review_counts is None:
+        # A named state other than the unsubmitted PENDING means the reviewer reviewed,
+        # once. Pass review_counts explicitly to model someone who only left comments,
+        # or who has reviewed more than once.
+        review_counts = {r: 1 for r, s in states.items() if s and s != "PENDING"}
     return GithubPR(
         number=PRNumber(number), title=title, isDraft=is_draft,
         createdAt=created_at, author=author, reviewers=reviewers or [],
         reviewer_states=states, labels=labels or set(),
         requested_reviewers=requested_reviewers or set(),
-        reviewed_reviewers=reviewed_reviewers,
+        review_counts=review_counts,
         head_ref=head_ref,
     )
 
@@ -269,28 +270,48 @@ class TestBasicColumns(unittest.TestCase):
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"})
         self.assertEqual(self._tty_reviewers_cell(pr), "\033[32mbob\033[0m")
 
-    def test_reviewers_column_italicises_re_requested_reviewer(self):
+    def test_reviewers_column_numbers_the_review_a_re_requested_reviewer_owes(self):
+        # One review already in, so the one now asked for is their second.
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
                      requested_reviewers={"bob"})
-        self.assertEqual(self._tty_reviewers_cell(pr), "\033[32m\033[3mbob\033[0m")
+        self.assertEqual(self._tty_reviewers_cell(pr), "bob (2)")
 
-    def test_reviewers_column_no_italics_for_first_time_request(self):
+    def test_reviewers_column_counts_up_over_repeated_re_requests(self):
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
+                     requested_reviewers={"bob"}, review_counts={"bob": 2})
+        self.assertEqual(self._tty_reviewers_cell(pr), "bob (3)")
+
+    def test_reviewers_column_applies_author_name_mapping_to_a_re_request(self):
+        config = make_config(author_names={"bob": "Bob Smith"})
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
+                     requested_reviewers={"bob"})
+        rows = run("reviewers", config=config, data=make_data(prs=[pr]))
+        self.assertEqual(rows[0][0], "Bob Smith (2)")
+
+    def test_reviewers_column_no_number_for_first_time_request(self):
         # An open request from someone who has never reviewed is not a re-request.
         pr = make_pr(1, reviewers=["bob"], requested_reviewers={"bob"})
         self.assertEqual(self._tty_reviewers_cell(pr), "bob")
 
-    def test_reviewers_column_no_italics_for_unsubmitted_draft_review(self):
+    def test_reviewers_column_no_number_for_unsubmitted_draft_review(self):
         # A PENDING review is a draft the reviewer has not submitted, so the open
         # request is a first ask, not a re-ask.
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "PENDING"},
                      requested_reviewers={"bob"})
         self.assertEqual(self._tty_reviewers_cell(pr), "bob")
 
+    def test_reviewers_column_drops_the_stale_colour_of_a_re_requested_reviewer(self):
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "CHANGES_REQUESTED"},
+                     requested_reviewers={"bob"})
+        self.assertNotIn("\033[", self._tty_reviewers_cell(pr))
+
     def test_reviewers_column_plain_when_not_a_tty(self):
+        # No colour off a tty, but the review number is information rather than
+        # decoration, so it survives.
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
                      requested_reviewers={"bob"})
         rows = run("reviewers", data=make_data(prs=[pr]))
-        self.assertEqual(rows[0][0], "bob")
+        self.assertEqual(rows[0][0], "bob (2)")
 
     def test_unresolved_all_column(self):
         data = make_data(prs=[make_pr(1)], unresolved_counts={PRNumber(1): (3, 2, 1)})
@@ -983,7 +1004,7 @@ class TestReviewOutstandingColumn(unittest.TestCase):
     def test_includes_reviewer_who_only_left_comments(self):
         # Comments do not count as a review, however many there are.
         pr = make_pr(1, reviewers=["alice"],
-                     reviewer_states={"alice": "COMMENTED"}, reviewed_reviewers=set())
+                     reviewer_states={"alice": "COMMENTED"}, review_counts={})
         rows = run("pr,ro", data=make_data(prs=[pr]))
         self.assertEqual(rows[0][1], "alice")
 
