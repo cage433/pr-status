@@ -62,8 +62,13 @@ def pr_node(
     build_checks: int = 0,
     head_ref: str | None = None,
     review_bodies: dict[str, str] | None = None,
+    request_counts: dict[str, int] | None = None,
 ) -> Node:
     review_request_nodes = [{"requestedReviewer": {"login": r}} for r in (reviewers or [])]
+    # Every open request was asked for once; pass request_counts to model a reviewer
+    # asked more often, or one asked earlier whose request is no longer open.
+    counts = request_counts if request_counts is not None else {r: 1 for r in (reviewers or [])}
+    timeline_nodes = [{"requestedReviewer": {"login": r}} for r, n in counts.items() for _ in range(n)]
     states = submitted_reviewer_states or {}
     bodies = review_bodies or {}
     # A reviewer named in submitted_reviewers has submitted a review; APPROVED needs no
@@ -74,7 +79,8 @@ def pr_node(
     node = {"number": number, "title": title, "isDraft": is_draft,
             "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
             "reviewRequests": {"nodes": review_request_nodes},
-            "reviews": {"nodes": review_nodes}}
+            "reviews": {"nodes": review_nodes},
+            "timelineItems": {"nodes": timeline_nodes}}
     if build_state is not None:
         rollup = {"state": build_state, "contexts": {"totalCount": build_checks}}
         node["commits"] = {"nodes": [{"commit": {"statusCheckRollup": rollup}}]}
@@ -400,6 +406,66 @@ class TestGithubPRReviewers(unittest.TestCase):
         raw = make_raw(pr_nodes=[node])
         data = GithubData.from_raw(make_config(), make_marks(), make_args(), raw)
         self.assertEqual(data.all_prs[0].reviewer_states.get("bob"), "APPROVED")
+
+
+class TestReviewRequestCounts(unittest.TestCase):
+
+    def _pr(self, **kw) -> GithubPR:
+        raw = make_raw(pr_nodes=[pr_node(1, **kw)])
+        return GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
+
+    def test_a_single_request_counts_once(self):
+        pr = self._pr(reviewers=["bob"])
+        self.assertEqual(pr.review_request_counts, {"bob": 1})
+
+    def test_repeated_requests_are_tallied(self):
+        pr = self._pr(reviewers=["bob"], request_counts={"bob": 3})
+        self.assertEqual(pr.review_request_counts, {"bob": 3})
+
+    def test_counts_an_ask_of_someone_who_never_reviewed(self):
+        # PR 5206's shape: asked, left standalone comments only, asked again.
+        pr = self._pr(reviewers=["bob"], submitted_reviewers=["bob"],
+                      submitted_reviewer_states={"bob": "COMMENTED"},
+                      request_counts={"bob": 2})
+        self.assertEqual(pr.review_request_counts, {"bob": 2})
+        self.assertEqual(pr.review_counts, {})
+        self.assertEqual(pr.outstanding_reviewers, ["bob"])
+
+    def test_no_requests_leaves_the_tally_empty(self):
+        pr = self._pr(submitted_reviewers=["bob"])
+        self.assertEqual(pr.review_request_counts, {})
+
+    def test_pr_author_excluded_from_the_tally(self):
+        pr = self._pr(author="alice", reviewers=["alice", "bob"])
+        self.assertEqual(pr.review_request_counts, {"bob": 1})
+
+    def test_ai_reviewer_excluded_from_the_tally_by_default(self):
+        config = make_config(ai_authors={"copilot"})
+        raw = make_raw(pr_nodes=[pr_node(1, reviewers=["copilot", "bob"])])
+        pr = GithubData.from_raw(config, make_marks(), make_args(include_ai=False), raw).all_prs[0]
+        self.assertEqual(pr.review_request_counts, {"bob": 1})
+
+    def test_bot_reviewer_without_a_login_is_skipped(self):
+        # A Bot matches neither the User nor the Team fragment, so comes back empty.
+        node = pr_node(1, reviewers=["bob"])
+        node["timelineItems"]["nodes"].append({"requestedReviewer": None})
+        pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True),
+                                 make_raw(pr_nodes=[node])).all_prs[0]
+        self.assertEqual(pr.review_request_counts, {"bob": 1})
+
+    def test_team_request_counted_by_name(self):
+        node = pr_node(1)
+        node["timelineItems"] = {"nodes": [{"requestedReviewer": {"name": "platform"}}]}
+        pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True),
+                                 make_raw(pr_nodes=[node])).all_prs[0]
+        self.assertEqual(pr.review_request_counts, {"platform": 1})
+
+    def test_missing_timeline_field_handled(self):
+        node = Node({"number": 1, "title": "T", "isDraft": False,
+                     "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"}})
+        pr = GithubData.from_raw(make_config(), make_marks(), make_args(),
+                                 make_raw(pr_nodes=[node])).all_prs[0]
+        self.assertEqual(pr.review_request_counts, {})
 
 
 class TestDraftFiltering(unittest.TestCase):

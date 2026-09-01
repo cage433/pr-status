@@ -52,6 +52,16 @@ query($owner: String!, $repo: String!, $cursor: String) {
             bodyText
           }
         }
+        timelineItems(last: 20, itemTypes: [REVIEW_REQUESTED_EVENT]) {
+          nodes {
+            ... on ReviewRequestedEvent {
+              requestedReviewer {
+                ... on User { login }
+                ... on Team { name }
+              }
+            }
+          }
+        }
         labels(first: 20) {
           nodes { name }
         }

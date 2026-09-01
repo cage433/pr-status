@@ -43,12 +43,13 @@ def _cell_reviewers(ctx: PRContext, _: bool) -> str:
     parts = []
     for r in ctx.pr.reviewers:
         rname = ctx.config.author_name(r)
-        reviews_submitted = ctx.pr.review_counts.get(r, 0)
-        # An open review request against someone who has already reviewed means they
-        # have been asked to look again. The colour of their last review says nothing
-        # about the one now owed, so the number of that pending review replaces it.
-        if reviews_submitted and r in ctx.pr.requested_reviewers:
-            parts.append("%s (%d)" % (rname, reviews_submitted + 1))
+        asks = ctx.pr.review_request_counts.get(r, 0)
+        # An open request against someone who has been asked before means they have been
+        # asked to look again — whether or not they ever submitted a review the first
+        # time. The colour of any last review says nothing about the one now owed, so
+        # the number of that pending ask replaces it.
+        if asks > 1 and r in ctx.pr.requested_reviewers:
+            parts.append("%s (%d)" % (rname, asks))
             continue
         colour = _REVIEW_STATE_COLOURS.get(ctx.pr.reviewer_states.get(r, ""), "") if use_color else ""
         parts.append((colour + rname + _RESET) if colour else rname)

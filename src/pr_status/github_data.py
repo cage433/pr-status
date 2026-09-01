@@ -56,6 +56,17 @@ def _is_submitted_review(state: str, body: str) -> bool:
     return state == "COMMENTED" and bool(body.strip())
 
 
+def _requested_login(node: Node) -> str:
+    """The login of the reviewer a review-request node names.
+
+    Covers both a `reviewRequests` entry and a `ReviewRequestedEvent`, which carry the
+    reviewer under the same key. A team is named rather than logged in; a bot reviewer
+    such as Copilot matches neither fragment, so comes back empty and is skipped.
+    """
+    rv = node.get("requestedReviewer") or {}
+    return rv.get("login") or rv.get("name", "")
+
+
 @dataclass
 class GithubPR:
     number: PRNumber
@@ -68,6 +79,7 @@ class GithubPR:
     labels: set[str] = field(default_factory=set)
     requested_reviewers: set[str] = field(default_factory=set)  # logins with a review request currently open
     review_counts: dict[str, int] = field(default_factory=dict)  # login → number of submitted reviews
+    review_request_counts: dict[str, int] = field(default_factory=dict)  # login → times a review has been asked of them
     head_ref: str = ""      # headRefName, the PR's source branch
     build_state: str = ""   # head-commit statusCheckRollup state (SUCCESS/FAILURE/ERROR/PENDING/EXPECTED); "" if no rollup
     build_checks: int = 0   # number of contexts (checks + statuses) in that rollup
@@ -112,6 +124,7 @@ class GithubPR:
             pr_author = author_dict.get("login", "")
             reviewer_nodes = (node.get("reviewRequests") or {}).get("nodes", [])
             review_nodes = (node.get("reviews") or {}).get("nodes", [])
+            timeline_nodes = (node.get("timelineItems") or {}).get("nodes", [])
 
             # Latest submitted-review state per reviewer (reviews are in chronological order)
             reviewer_states: dict[str, str] = {}
@@ -124,11 +137,18 @@ class GithubPR:
                         reviewer_states[login] = state
                         review_counts[login] = review_counts.get(login, 0) + 1
 
+            # How many times each reviewer has been asked. Only the last 20 request events
+            # are fetched, so a reviewer asked more often than that undercounts.
+            review_request_counts: dict[str, int] = {}
+            for tn in timeline_nodes:
+                login = _requested_login(tn)
+                if login and login != pr_author and (args.include_ai or not config.is_ai_author(login)):
+                    review_request_counts[login] = review_request_counts.get(login, 0) + 1
+
             seen: set[str] = set()
             reviewers: list[str] = []
             for rn in reviewer_nodes:
-                rv = rn.get("requestedReviewer") or {}
-                login = rv.get("login") or rv.get("name", "")
+                login = _requested_login(rn)
                 if login and login not in seen and (args.include_ai or not config.is_ai_author(login)):
                     seen.add(login)
                     reviewers.append(login)
@@ -157,6 +177,7 @@ class GithubPR:
                 labels=labels,
                 requested_reviewers=requested_reviewers,
                 review_counts=review_counts,
+                review_request_counts=review_request_counts,
                 head_ref=node.get("headRefName", ""),
                 build_state=rollup.get("state", ""),
                 build_checks=(rollup.get("contexts") or {}).get("totalCount", 0),

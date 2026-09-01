@@ -55,8 +55,13 @@ def make_pr(
     head_ref: str = "",
     requested_reviewers: set[str] | None = None,
     review_counts: dict[str, int] | None = None,
+    review_request_counts: dict[str, int] | None = None,
 ) -> GithubPR:
     states = reviewer_states or {}
+    if review_request_counts is None:
+        # An open request is one ask. Pass review_request_counts explicitly to model a
+        # reviewer who has been asked more than once.
+        review_request_counts = {r: 1 for r in (requested_reviewers or set())}
     if review_counts is None:
         # A named state other than the unsubmitted PENDING means the reviewer reviewed,
         # once. Pass review_counts explicitly to model someone who only left comments,
@@ -68,6 +73,7 @@ def make_pr(
         reviewer_states=states, labels=labels or set(),
         requested_reviewers=requested_reviewers or set(),
         review_counts=review_counts,
+        review_request_counts=review_request_counts,
         head_ref=head_ref,
     )
 
@@ -271,45 +277,59 @@ class TestBasicColumns(unittest.TestCase):
         self.assertEqual(self._tty_reviewers_cell(pr), "\033[32mbob\033[0m")
 
     def test_reviewers_column_numbers_the_review_a_re_requested_reviewer_owes(self):
-        # One review already in, so the one now asked for is their second.
+        # Asked twice, so the ask now outstanding is their second.
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
-                     requested_reviewers={"bob"})
+                     requested_reviewers={"bob"}, review_request_counts={"bob": 2})
         self.assertEqual(self._tty_reviewers_cell(pr), "bob (2)")
 
     def test_reviewers_column_counts_up_over_repeated_re_requests(self):
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
-                     requested_reviewers={"bob"}, review_counts={"bob": 2})
+                     requested_reviewers={"bob"}, review_request_counts={"bob": 3})
         self.assertEqual(self._tty_reviewers_cell(pr), "bob (3)")
+
+    def test_reviewers_column_numbers_a_re_ask_of_someone_who_never_reviewed(self):
+        # The asks are what count: bob left comments but submitted no review, and is
+        # being asked a second time, so the ask outstanding is still his second.
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={}, review_counts={},
+                     requested_reviewers={"bob"}, review_request_counts={"bob": 2})
+        self.assertEqual(self._tty_reviewers_cell(pr), "bob (2)")
 
     def test_reviewers_column_applies_author_name_mapping_to_a_re_request(self):
         config = make_config(author_names={"bob": "Bob Smith"})
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
-                     requested_reviewers={"bob"})
+                     requested_reviewers={"bob"}, review_request_counts={"bob": 2})
         rows = run("reviewers", config=config, data=make_data(prs=[pr]))
         self.assertEqual(rows[0][0], "Bob Smith (2)")
 
     def test_reviewers_column_no_number_for_first_time_request(self):
-        # An open request from someone who has never reviewed is not a re-request.
+        # An open request from someone who has not been asked before is not a re-request.
         pr = make_pr(1, reviewers=["bob"], requested_reviewers={"bob"})
         self.assertEqual(self._tty_reviewers_cell(pr), "bob")
 
+    def test_reviewers_column_no_number_for_a_reviewer_with_no_open_ask(self):
+        # Asked twice and answered both times: nothing is owed, so the state colour
+        # rather than a number is what belongs on the name.
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
+                     review_request_counts={"bob": 2})
+        self.assertEqual(self._tty_reviewers_cell(pr), "\033[32mbob\033[0m")
+
     def test_reviewers_column_no_number_for_unsubmitted_draft_review(self):
-        # A PENDING review is a draft the reviewer has not submitted, so the open
-        # request is a first ask, not a re-ask.
+        # A PENDING review is a draft the reviewer has not submitted, and they have been
+        # asked only once, so the open request is a first ask.
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "PENDING"},
                      requested_reviewers={"bob"})
         self.assertEqual(self._tty_reviewers_cell(pr), "bob")
 
     def test_reviewers_column_drops_the_stale_colour_of_a_re_requested_reviewer(self):
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "CHANGES_REQUESTED"},
-                     requested_reviewers={"bob"})
+                     requested_reviewers={"bob"}, review_request_counts={"bob": 2})
         self.assertNotIn("\033[", self._tty_reviewers_cell(pr))
 
     def test_reviewers_column_plain_when_not_a_tty(self):
         # No colour off a tty, but the review number is information rather than
         # decoration, so it survives.
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
-                     requested_reviewers={"bob"})
+                     requested_reviewers={"bob"}, review_request_counts={"bob": 2})
         rows = run("reviewers", data=make_data(prs=[pr]))
         self.assertEqual(rows[0][0], "bob (2)")
 
