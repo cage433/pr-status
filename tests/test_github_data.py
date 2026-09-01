@@ -66,7 +66,9 @@ def pr_node(
     review_request_nodes = [{"requestedReviewer": {"login": r}} for r in (reviewers or [])]
     states = submitted_reviewer_states or {}
     bodies = review_bodies or {}
-    review_nodes = [{"author": {"login": r}, "state": states.get(r, "COMMENTED"),
+    # A reviewer named in submitted_reviewers has submitted a review; APPROVED needs no
+    # summary body to count as one, so it is the default state.
+    review_nodes = [{"author": {"login": r}, "state": states.get(r, "APPROVED"),
                      "bodyText": bodies.get(r, "")}
                     for r in (submitted_reviewers or [])]
     node = {"number": number, "title": title, "isDraft": is_draft,
@@ -457,6 +459,24 @@ class TestRequestedReviewers(unittest.TestCase):
         self.assertEqual(pr.reviewed_reviewers, set())
         self.assertEqual(pr.outstanding_reviewers, ["bob"])
 
+    def test_standalone_comments_leave_a_requested_reviewer_stateless(self):
+        # A reviewer who has only left standalone code comments has submitted no review,
+        # so has no latest review state to colour their name with; the open request
+        # against them still stands.
+        raw = make_raw(pr_nodes=[Node({
+            "number": 1, "title": "Test PR", "isDraft": False,
+            "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"},
+            "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "bob"}}]},
+            "reviews": {"nodes": [
+                {"author": {"login": "bob"}, "state": "COMMENTED", "bodyText": ""},
+                {"author": {"login": "bob"}, "state": "COMMENTED", "bodyText": ""},
+            ]},
+        })])
+        pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
+        self.assertEqual(pr.reviewer_states, {})
+        self.assertEqual(pr.review_counts, {})
+        self.assertEqual(pr.outstanding_reviewers, ["bob"])
+
     def test_comment_review_with_a_summary_is_submitted(self):
         pr = self._pr(submitted_reviewers=["bob"],
                       submitted_reviewer_states={"bob": "COMMENTED"},
@@ -515,7 +535,9 @@ class TestRequestedReviewers(unittest.TestCase):
             ]},
         })])
         pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
-        self.assertEqual(pr.reviewer_states["bob"], "COMMENTED")
+        # The bodiless COMMENTED review is a standalone code comment, so it neither
+        # counts as a review nor displaces the approval as bob's latest state.
+        self.assertEqual(pr.reviewer_states["bob"], "APPROVED")
         self.assertEqual(pr.reviewed_reviewers, {"bob"})
         self.assertEqual(pr.outstanding_reviewers, [])
 

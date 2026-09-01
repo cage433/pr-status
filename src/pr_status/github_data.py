@@ -64,7 +64,7 @@ class GithubPR:
     createdAt: str
     author: str  # login name; empty string if the account has been deleted
     reviewers: list[str]
-    reviewer_states: dict[str, str]  # login → latest review state (APPROVED, CHANGES_REQUESTED, …)
+    reviewer_states: dict[str, str]  # login → latest submitted review state (APPROVED, CHANGES_REQUESTED, …)
     labels: set[str] = field(default_factory=set)
     requested_reviewers: set[str] = field(default_factory=set)  # logins with a review request currently open
     review_counts: dict[str, int] = field(default_factory=dict)  # login → number of submitted reviews
@@ -113,15 +113,15 @@ class GithubPR:
             reviewer_nodes = (node.get("reviewRequests") or {}).get("nodes", [])
             review_nodes = (node.get("reviews") or {}).get("nodes", [])
 
-            # Latest state per reviewer (reviews are in chronological order)
+            # Latest submitted-review state per reviewer (reviews are in chronological order)
             reviewer_states: dict[str, str] = {}
             review_counts: dict[str, int] = {}
             for rn in review_nodes:
                 login = (rn.get("author") or {}).get("login", "")
                 state = rn.get("state", "")
                 if login and login != pr_author and (args.include_ai or not config.is_ai_author(login)):
-                    reviewer_states[login] = state
                     if _is_submitted_review(state, rn.get("bodyText", "")):
+                        reviewer_states[login] = state
                         review_counts[login] = review_counts.get(login, 0) + 1
 
             seen: set[str] = set()
