@@ -1,5 +1,6 @@
 import re
 import sys
+from dataclasses import dataclass
 
 from ._util import truncate
 from .column import Column
@@ -87,6 +88,33 @@ def _cell_workdays(ctx: PRContext, _: bool) -> str:
 def _cell_yt_state(ctx: PRContext, _: bool) -> str:
     if not _yt_ticket(ctx): return "none"
     return _yt_issue(ctx).state or "—"
+
+
+@dataclass(frozen=True)
+class _EnumVocabulary:
+    """The values a YouTrack enum field takes, least first, each with the letter the
+    report shows in its place. Keeping the scale's own order is what lets a sort on such
+    a column mean anything — alphabetically, High comes before Low."""
+    values: tuple[tuple[str, str], ...]
+
+    def letter(self, value: str) -> str:
+        for name, letter in self.values:
+            if name == value:
+                return letter
+        # A value added in YouTrack since keeps its initial rather than showing as blank.
+        return value[:1].upper()
+
+    def rank(self, value: str) -> int:
+        for i, (name, _) in enumerate(self.values):
+            if name == value:
+                return i
+        return len(self.values)   # unset, or unrecognised, sorts after the scale
+
+
+COMMITTED_VALUES   = _EnumVocabulary((("Not Committed", "N"), ("Requested commit", "R"),
+                                      ("Committed", "C")))
+UNCERTAINTY_VALUES = _EnumVocabulary((("Low", "L"), ("Medium", "M"), ("High", "H")))
+RISK_VALUES        = _EnumVocabulary((("Small", "S"), ("Medium", "M"), ("Large", "L")))
 
 
 def _cell_estimate(ctx: PRContext, _: bool) -> str:
@@ -265,9 +293,9 @@ RELEASE_DATE_COL = Column(
     sort_key=lambda ctx: _yt_issue(ctx).release_date or "9999",
 )
 COMMITTED_COL = Column(
-    "committed", "CM", 17, ("cm",), needs_youtrack=True,
-    cell=lambda ctx, _: _yt_issue(ctx).committed,
-    sort_key=lambda ctx: _yt_issue(ctx).committed.lower(),
+    "committed", "CM", 3, ("cm",), needs_youtrack=True,
+    cell=lambda ctx, _: COMMITTED_VALUES.letter(_yt_issue(ctx).committed),
+    sort_key=lambda ctx: COMMITTED_VALUES.rank(_yt_issue(ctx).committed),
 )
 ESTIMATE_COL = Column(
     "estimate", "EST", 6, ("es", "est"), is_numeric=True, is_fractional=True, needs_youtrack=True,
@@ -276,9 +304,9 @@ ESTIMATE_COL = Column(
     sort_key=lambda ctx: _yt_issue(ctx).estimate_days if _yt_issue(ctx).estimate_days is not None else -1.0,
 )
 ESTIMATE_UNCERTAINTY_COL = Column(
-    "estimate-uncertainty", "EU", 8, ("eu",), needs_youtrack=True,
-    cell=lambda ctx, _: _yt_issue(ctx).estimate_uncertainty,
-    sort_key=lambda ctx: _yt_issue(ctx).estimate_uncertainty.lower(),
+    "estimate-uncertainty", "EU", 3, ("eu",), needs_youtrack=True,
+    cell=lambda ctx, _: UNCERTAINTY_VALUES.letter(_yt_issue(ctx).estimate_uncertainty),
+    sort_key=lambda ctx: UNCERTAINTY_VALUES.rank(_yt_issue(ctx).estimate_uncertainty),
 )
 TYPE_COL = Column(
     "type", "TY", 10, ("ty",), needs_youtrack=True,
@@ -286,9 +314,9 @@ TYPE_COL = Column(
     sort_key=lambda ctx: _yt_issue(ctx).issue_type.lower(),
 )
 RISK_COMPLEXITY_COL = Column(
-    "risk-complexity", "RK", 8, ("rk",), needs_youtrack=True,
-    cell=lambda ctx, _: _yt_issue(ctx).risk_complexity,
-    sort_key=lambda ctx: _yt_issue(ctx).risk_complexity.lower(),
+    "risk-complexity", "RK", 3, ("rk",), needs_youtrack=True,
+    cell=lambda ctx, _: RISK_VALUES.letter(_yt_issue(ctx).risk_complexity),
+    sort_key=lambda ctx: RISK_VALUES.rank(_yt_issue(ctx).risk_complexity),
 )
 
 ALL_COLUMNS: list[Column] = [

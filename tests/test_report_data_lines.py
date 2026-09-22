@@ -1124,8 +1124,62 @@ class TestYoutrackFieldColumns(unittest.TestCase):
     def test_each_field_reaches_its_column(self):
         rows = self._run("dd,rc,rn,rd,cm,es,eu,ty,rk")
         self.assertEqual(rows[0], ["2026-09-15", "Release 2.36 9th October 2026", "2.36",
-                                   "2026-10-09", "Not Committed", "5.0", "Medium",
-                                   "Feature", "Small"])
+                                   "2026-10-09", "N", "5.0", "M", "Feature", "S"])
+
+    def test_enum_scales_show_one_letter(self):
+        for column, value, letter in [("cm", "Committed", "C"), ("cm", "Not Committed", "N"),
+                                      ("cm", "Requested commit", "R"),
+                                      ("eu", "Low", "L"), ("eu", "Medium", "M"), ("eu", "High", "H"),
+                                      ("rk", "Small", "S"), ("rk", "Medium", "M"), ("rk", "Large", "L")]:
+            field = {"cm": "committed", "eu": "estimate_uncertainty", "rk": "risk_complexity"}[column]
+            rows = self._run(column, issues={"PROJ-1": YoutrackIssue(**{field: value})})
+            self.assertEqual(rows[0], [letter], "%s=%s" % (column, value))
+
+    def test_an_unset_scale_is_blank(self):
+        rows = self._run("cm,eu,rk", issues={"PROJ-1": YoutrackIssue()})
+        self.assertEqual(rows[0], ["", "", ""])
+
+    def test_a_value_the_scale_does_not_know_keeps_its_initial(self):
+        rows = self._run("cm", issues={"PROJ-1": YoutrackIssue(committed="Deferred")})
+        self.assertEqual(rows[0], ["D"])
+
+    def test_scales_sort_by_their_own_order_not_alphabetically(self):
+        prs = [make_pr(i, title="PROJ-%d x" % i) for i in (1, 2, 3, 4)]
+        issues = {"PROJ-1": YoutrackIssue(estimate_uncertainty="Medium"),
+                  "PROJ-2": YoutrackIssue(estimate_uncertainty="High"),
+                  "PROJ-3": YoutrackIssue(estimate_uncertainty="Low"),
+                  "PROJ-4": YoutrackIssue()}
+        # Alphabetically this would be High, Low, Medium; unset sorts after the scale.
+        rows = self._run("eu", issues=issues, prs=prs, sort="eu")
+        self.assertEqual([r[0] for r in rows], ["L", "M", "H", ""])
+
+    def test_risk_sorts_smallest_first(self):
+        prs = [make_pr(i, title="PROJ-%d x" % i) for i in (1, 2, 3)]
+        issues = {"PROJ-1": YoutrackIssue(risk_complexity="Large"),
+                  "PROJ-2": YoutrackIssue(risk_complexity="Small"),
+                  "PROJ-3": YoutrackIssue(risk_complexity="Medium")}
+        rows = self._run("rk", issues=issues, prs=prs, sort="rk")
+        self.assertEqual([r[0] for r in rows], ["S", "M", "L"])
+
+    def test_null_filters_to_the_prs_with_no_value(self):
+        prs = [make_pr(i, title="PROJ-%d x" % i) for i in (1, 2)]
+        issues = {"PROJ-1": YoutrackIssue(committed="Committed"), "PROJ-2": YoutrackIssue()}
+        rows = self._run("pr,cm", issues=issues, prs=prs, filters=["CM=null"])
+        self.assertEqual([r[0] for r in rows], ["#2    "])
+
+    def test_negated_null_filters_to_the_prs_that_have_one(self):
+        prs = [make_pr(i, title="PROJ-%d x" % i) for i in (1, 2)]
+        issues = {"PROJ-1": YoutrackIssue(committed="Committed"), "PROJ-2": YoutrackIssue()}
+        rows = self._run("pr,cm", issues=issues, prs=prs, filters=["CM!=null"])
+        self.assertEqual([r[0] for r in rows], ["#1    "])
+
+    def test_null_alongside_a_value(self):
+        prs = [make_pr(i, title="PROJ-%d x" % i) for i in (1, 2, 3)]
+        issues = {"PROJ-1": YoutrackIssue(risk_complexity="Large"),
+                  "PROJ-2": YoutrackIssue(),
+                  "PROJ-3": YoutrackIssue(risk_complexity="Small")}
+        rows = self._run("pr,rk", issues=issues, prs=prs, filters=["RK=L,null"])
+        self.assertEqual([r[1] for r in rows], ["L", ""])
 
     def test_aliases_resolve_to_the_right_columns(self):
         spec = make_spec("dd,rc,rn,rd,cm,es,eu,ty,rk")
@@ -1169,6 +1223,33 @@ class TestYoutrackFieldColumns(unittest.TestCase):
                   "PROJ-3": YoutrackIssue(release_cycle="Release 2.34 26th June 26")}
         rows = self._run("rd", issues=issues, prs=prs, sort="rd")
         self.assertEqual([r[0] for r in rows], ["2026-06-26", "2026-10-09", ""])
+
+
+class TestNullFilter(unittest.TestCase):
+    """'null' matches rows the column has no value for, whatever the column."""
+
+    def test_null_matches_a_pr_with_no_reviewers(self):
+        prs  = [make_pr(1, reviewers=["bob"]), make_pr(2, reviewers=[])]
+        rows = run("pr,r", data=make_data(prs=prs), filters=["R=null"])
+        self.assertEqual([r[0] for r in rows], ["#2    "])
+
+    def test_null_matches_the_same_prs_as_none_on_the_reviewer_columns(self):
+        prs  = [make_pr(1, reviewers=["bob"]), make_pr(2, reviewers=[])]
+        data = make_data(prs=prs)
+        self.assertEqual(run("pr", data=data, filters=["RO=null"]),
+                         run("pr", data=data, filters=["RO=none"]))
+
+    def test_null_matches_a_blank_branch(self):
+        prs  = [make_pr(1, head_ref="feature"), make_pr(2, head_ref="")]
+        rows = run("pr,b", data=make_data(prs=prs), filters=["B=null"])
+        self.assertEqual([r[0] for r in rows], ["#2    "])
+
+    def test_null_does_not_match_a_column_that_writes_its_own_placeholder(self):
+        # youtrack-ticket shows "none" rather than a blank, so that is what matches.
+        prs  = [make_pr(1, title="no ticket here")]
+        data = make_data(prs=prs)
+        self.assertEqual(run("pr", data=data, filters=["YT=null"]), [])
+        self.assertEqual(len(run("pr", data=data, filters=["YT=none"])), 1)
 
 
 class TestYoutrackFetchIsOnlyForColumnsThatNeedIt(unittest.TestCase):

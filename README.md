@@ -98,11 +98,11 @@ These should be written as a comma separated list of names or aliases. The avail
 | release-cycle | RC | The ticket's Release Cycle, verbatim, e.g. `Release 2.36 9th October 2026` |
 | release-number | RN | The version the Release Cycle names, e.g. `2.36`. A cycle whose name carries no version is shown whole |
 | release-date | RD | The date the Release Cycle's name gives, e.g. `2026-10-09`. This is read from the name rather than from the version's own release date, which the two sometimes disagree on. Sorts unscheduled last |
-| committed | CM | The ticket's Committed field: `Committed`, `Not Committed` or `Requested commit` |
+| committed | CM | The ticket's Committed field, as one letter: `C` committed, `R` requested commit, `N` not committed. Sorts least-committed first |
 | estimate | EST | The ticket's Estimate (dev only), in working days (a YouTrack week is 5 of them); totals at the foot of the report |
-| estimate-uncertainty | EU | The ticket's Estimate Uncertainty: `Low`, `Medium` or `High` |
+| estimate-uncertainty | EU | The ticket's Estimate Uncertainty, as one letter: `L`, `M`, `H`. Sorts by the scale rather than alphabetically, so least uncertain first |
 | type | TY | The ticket's Type, e.g. `Feature`, `Bug`, `Refactor` |
-| risk-complexity | RK | The ticket's Risk Complexity: `Small`, `Medium` or `Large` |
+| risk-complexity | RK | The ticket's Risk Complexity, as one letter: `S`, `M`, `L`. Sorts by the scale rather than alphabetically, so smallest first |
 | workdays | WD | Total workdays logged against the YT ticket in Timely (hours/8); blank if no YT ticket. Requires Timely admin access |
 
 Every column from `dev-deadline` to `risk-complexity`, along with `youtrack-state` and `valid`, is read from the ticket the PR's title names, so a report using one needs `youtrack-url` and `youtrack-token` in the config. They are blank on a PR whose title names no ticket, and on a ticket that leaves the field unset — `youtrack-state` tells the two apart.
@@ -131,7 +131,18 @@ Any number of filters can be added to a report, each takes the form `--filter <p
 ```
 COL=v1,v2,..,vn    keeps only rows where COL's value is one of v1, ..., vn
 COL!=v1,v2,..,vn   keeps only rows where COL's value is none of v1, ..., vn
+COL=null           keeps only rows where COL has no value at all
+COL!=null          keeps only rows where COL has some value
 ```
+
+Values are matched against the cell as shown, so a column displaying an abbreviation is
+filtered by it: `--filter RK=L` for the large ones, `--filter CM=N,R` for those not yet
+committed.
+
+`null` is for a genuinely empty cell. A column that writes its own placeholder instead
+is filtered by that placeholder — `--filter YT=none` for a PR whose title names no
+ticket, since `youtrack-ticket` shows `none` rather than a blank. `null` can be combined
+with values: `--filter RK=L,null`.
 
 **reviewer predicates**
 
@@ -141,6 +152,7 @@ R=none          keeps PRs with no requested reviewers at all
 ```
 
 These can be combined: `R=none,bob` keeps PRs with no reviewers or where bob is a reviewer.
+`R=null` and `RO=null` mean the same as `none` here.
 
 **timestamp predicates**
 

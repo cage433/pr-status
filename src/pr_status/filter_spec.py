@@ -97,11 +97,18 @@ class ColumnFilterSpec(FilterSpec):
         from .columns import COMMENT_TIME_COL
         return self.column == COMMENT_TIME_COL
 
+    @property
+    def wants_empty(self) -> bool:
+        """Whether the filter is asking for rows the column has no value for. 'null' says
+        so for any column; the reviewer columns have always spelt it 'none'."""
+        return "null" in self.values
+
     def search_qualifiers(self, config: "Config") -> list[str]:
         from .columns import AUTHOR_COL, REVIEW_OUTSTANDING_COL
-        if self.negate or "none" in self.values:
+        if self.negate or self.wants_empty or "none" in self.values:
             # A negated qualifier over a login GitHub does not know matches nothing at
-            # all rather than everything, and 'none' names no login to ask about.
+            # all rather than everything, and neither 'none' nor 'null' names a login to
+            # ask about.
             return []
         if self.column == AUTHOR_COL:
             # Repeated author: qualifiers are ORed, which is what a multi-valued filter
@@ -119,23 +126,26 @@ class ColumnFilterSpec(FilterSpec):
 
     def matches(self, ctx: "PRContext") -> bool:
         from .columns import PULL_REQUEST_COL, REVIEWERS_COL, REVIEW_OUTSTANDING_COL
+        empty = self.wants_empty or "none" in self.values
         if self.column == REVIEWERS_COL:
             reviewer_names = {ctx.config.author_name(r) for r in ctx.pr.reviewers}
-            matched = (not ctx.pr.reviewers and "none" in self.values) or bool(reviewer_names & self.values)
+            matched = (not ctx.pr.reviewers and empty) or bool(reviewer_names & self.values)
             return not matched if self.negate else matched
         if self.column == REVIEW_OUTSTANDING_COL:
             outstanding = {ctx.config.author_name(r) for r in ctx.pr.outstanding_reviewers}
-            matched = (not outstanding and "none" in self.values) or bool(outstanding & self.values)
+            matched = (not outstanding and empty) or bool(outstanding & self.values)
             return not matched if self.negate else matched
         val = str(ctx.pr.number) if self.column == PULL_REQUEST_COL else self.column.cell(ctx, False)
-        return (val not in self.values) if self.negate else (val in self.values)
+        matched = val in self.values or (not val and self.wants_empty)
+        return not matched if self.negate else matched
 
     def matches_comment(self, ctx: "PRContext", cr: "GithubComment") -> bool:
         from .columns import COMMENT_TIME_COL
         from .date_utils import fmt_ts
         if self.column == COMMENT_TIME_COL:
             val = fmt_ts(cr.timestamp, show_time=True)
-            return (val not in self.values) if self.negate else (val in self.values)
+            matched = val in self.values or (not val and self.wants_empty)
+            return not matched if self.negate else matched
         return self.matches(ctx)
 
 

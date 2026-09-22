@@ -406,6 +406,13 @@ class TestSearchQualifiers(unittest.TestCase):
     def test_none_is_not_pushed_down(self):
         self.assertEqual(self.qualifiers(["RO=none"]), [])
 
+    def test_null_is_not_pushed_down(self):
+        # 'null' asks for PRs the column has no value for; there is no login to ask
+        # GitHub about, and author:null would come back empty.
+        self.assertEqual(self.qualifiers(["A=null"]), [])
+        self.assertEqual(self.qualifiers(["RO=null"]), [])
+        self.assertEqual(self.qualifiers(["A=alex,null"], author_names={"cage433": "alex"}), [])
+
     def test_other_columns_are_not_pushed_down(self):
         self.assertEqual(self.qualifiers(["R=alex"], author_names={"cage433": "alex"}), [])
         self.assertEqual(self.qualifiers(["V=false"]), [])
