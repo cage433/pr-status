@@ -133,7 +133,7 @@ class GithubPR:
                 login = (rn.get("author") or {}).get("login", "")
                 state = rn.get("state", "")
                 if login and login != pr_author and (args.include_ai or not config.is_ai_author(login)):
-                    if _is_submitted_review(state, rn.get("bodyText", "")):
+                    if _is_submitted_review(state, rn.get("body", "")):
                         reviewer_states[login] = state
                         review_counts[login] = review_counts.get(login, 0) + 1
 

@@ -74,7 +74,7 @@ def pr_node(
     # A reviewer named in submitted_reviewers has submitted a review; APPROVED needs no
     # summary body to count as one, so it is the default state.
     review_nodes = [{"author": {"login": r}, "state": states.get(r, "APPROVED"),
-                     "bodyText": bodies.get(r, "")}
+                     "body": bodies.get(r, "")}
                     for r in (submitted_reviewers or [])]
     node = {"number": number, "title": title, "isDraft": is_draft,
             "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
@@ -534,8 +534,8 @@ class TestRequestedReviewers(unittest.TestCase):
             "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"},
             "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "bob"}}]},
             "reviews": {"nodes": [
-                {"author": {"login": "bob"}, "state": "COMMENTED", "bodyText": ""},
-                {"author": {"login": "bob"}, "state": "COMMENTED", "bodyText": ""},
+                {"author": {"login": "bob"}, "state": "COMMENTED", "body": ""},
+                {"author": {"login": "bob"}, "state": "COMMENTED", "body": ""},
             ]},
         })])
         pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
@@ -567,9 +567,9 @@ class TestRequestedReviewers(unittest.TestCase):
             "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"},
             "reviewRequests": {"nodes": []},
             "reviews": {"nodes": [
-                {"author": {"login": "bob"}, "state": "CHANGES_REQUESTED", "bodyText": "no"},
-                {"author": {"login": "bob"}, "state": "COMMENTED",         "bodyText": ""},
-                {"author": {"login": "bob"}, "state": "APPROVED",          "bodyText": ""},
+                {"author": {"login": "bob"}, "state": "CHANGES_REQUESTED", "body": "no"},
+                {"author": {"login": "bob"}, "state": "COMMENTED",         "body": ""},
+                {"author": {"login": "bob"}, "state": "APPROVED",          "body": ""},
             ]},
         })])
         pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]
@@ -596,8 +596,8 @@ class TestRequestedReviewers(unittest.TestCase):
             "createdAt": "2024-01-01T00:00:00Z", "author": {"login": "alice"},
             "reviewRequests": {"nodes": []},
             "reviews": {"nodes": [
-                {"author": {"login": "bob"}, "state": "APPROVED",  "bodyText": "looks good"},
-                {"author": {"login": "bob"}, "state": "COMMENTED", "bodyText": ""},
+                {"author": {"login": "bob"}, "state": "APPROVED",  "body": "looks good"},
+                {"author": {"login": "bob"}, "state": "COMMENTED", "body": ""},
             ]},
         })])
         pr = GithubData.from_raw(make_config(), make_marks(), make_args(include_drafts=True), raw).all_prs[0]

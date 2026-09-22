@@ -45,11 +45,14 @@ query($owner: String!, $repo: String!, $cursor: String) {
             }
           }
         }
+        # `body` rather than `bodyText`: only its emptiness is read (see
+        # _is_submitted_review), and GitHub renders bodyText per review, which costs
+        # ~4s on a 100-PR page here.
         reviews(first: 100) {
           nodes {
             author { login }
             state
-            bodyText
+            body
           }
         }
         timelineItems(last: 20, itemTypes: [REVIEW_REQUESTED_EVENT]) {
