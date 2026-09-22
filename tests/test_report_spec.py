@@ -1,5 +1,7 @@
 import unittest
 
+from pr_status.config import Config, GithubInfo
+from pr_status.marks import Marks
 from pr_status.column import Column, _ListError
 from pr_status.columns import (
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, NUM_COMMENTS_COL,
@@ -305,6 +307,81 @@ class TestColWidth(unittest.TestCase):
             ColumnDisplay(CREATION_DATE_COL, use_long_name=True).display_width,
             ColumnDisplay(CREATION_DATE_COL).display_width,
         )
+
+
+def make_config(**kwargs) -> Config:
+    defaults = dict(
+        repo=GithubInfo(owner="owner", repo_name="repo"),
+        ignored_authors=set(), ignored_prs=set(), ai_authors=set(), author_names={},
+        ignored_comment_patterns=[], ignored_title_patterns=[], ignored_labels=set(),
+        aliases={},
+    )
+    defaults.update(kwargs)
+    return Config(**defaults)
+
+
+def pr_node(number: int, title: str = "Test PR", author: str = "alice",
+            reviewers: list[str] | None = None) -> dict:
+    return {"number": number, "title": title, "isDraft": False,
+            "createdAt": "2024-01-01T00:00:00Z", "author": {"login": author},
+            "reviewRequests": {"nodes": [{"requestedReviewer": {"login": r}}
+                                         for r in (reviewers or [])]},
+            "reviews": {"nodes": []},
+            "timelineItems": {"nodes": [{"requestedReviewer": {"login": r}}
+                                        for r in (reviewers or [])]}}
+
+
+class TestPreFetchFilters(unittest.TestCase):
+
+    def test_light_query_filter_is_pre_fetchable(self):
+        spec = resolve("pr", filters=["RO=bob"])
+        self.assertEqual(len(spec.pre_fetch_filters), 1)
+
+    def test_filter_needing_per_pr_fetch_is_not(self):
+        # The unresolved-thread count only exists after the per-PR comment fetch.
+        spec = resolve("pr", filters=["UA=0"])
+        self.assertEqual(spec.pre_fetch_filters, [])
+
+    def test_filter_needing_youtrack_is_not(self):
+        spec = resolve("pr", filters=["V=false"])
+        self.assertEqual(spec.pre_fetch_filters, [])
+
+    def test_comparison_filter_is_pre_fetchable_only_when_both_sides_are(self):
+        self.assertEqual(len(resolve("pr", filters=["cd>mk"]).pre_fetch_filters), 1)
+        self.assertEqual(resolve("pr", filters=["lct>mk"]).pre_fetch_filters, [])
+
+    def test_mixed_filters_keep_only_the_light_ones(self):
+        spec = resolve("pr", filters=["RO=bob", "UA=0"])
+        self.assertEqual([fs.column.name for fs in spec.pre_fetch_filters], ["review-outstanding"])
+
+
+class TestNarrowPrNodes(unittest.TestCase):
+
+    def setUp(self):
+        self.config = make_config()
+        self.marks  = Marks("/nonexistent/path/marks.csv")
+        self.nodes  = [pr_node(1, reviewers=["bob"]), pr_node(2, reviewers=["carol"])]
+
+    def narrow(self, filters: list[str]) -> list[int]:
+        args = make_args(columns="pr", filters=filters)
+        spec = ReportSpec.resolve(args)
+        return [n["number"] for n in spec.narrow_pr_nodes(self.config, self.marks, args, self.nodes)]
+
+    def test_keeps_only_the_prs_a_light_filter_matches(self):
+        self.assertEqual(self.narrow(["RO=bob"]), [1])
+
+    def test_keeps_nothing_when_no_pr_matches(self):
+        self.assertEqual(self.narrow(["RO=dave"]), [])
+
+    def test_keeps_everything_with_no_filters(self):
+        self.assertEqual(self.narrow([]), [1, 2])
+
+    def test_keeps_everything_when_no_filter_is_pre_fetchable(self):
+        # UA needs the per-PR comment fetch, so nothing can be decided yet.
+        self.assertEqual(self.narrow(["UA=1"]), [1, 2])
+
+    def test_a_non_pre_fetchable_filter_does_not_narrow_alongside_a_light_one(self):
+        self.assertEqual(self.narrow(["RO=bob,carol", "UA=1"]), [1, 2])
 
 
 if __name__ == "__main__":

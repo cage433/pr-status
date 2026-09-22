@@ -154,6 +154,10 @@ def run_report(
         # can run the (independent) YouTrack lookup concurrently with the slow per-PR
         # comment/LOC fetch rather than after it.
         pr_nodes = GithubRawData.fetch_pr_nodes_filtered(config, args)
+        # Filters that only read the light query — e.g. --filter RO=@me — can be settled
+        # now, so a PR that cannot appear in the report costs no LOC, comment or
+        # YouTrack fetch at all.
+        pr_nodes = spec.narrow_pr_nodes(config, marks, args, pr_nodes)
         yt_future = yt_executor = None
         if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and config.youtrack_url and config.youtrack_token:
             ticket_ids = [m.group(1) + "-" + m.group(2) for n in pr_nodes if (m := _YT_RE.match(n["title"]))]

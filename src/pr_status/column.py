@@ -18,6 +18,12 @@ class Column:
     aliases:           tuple[str, ...]        = ()
     is_timestamp:      bool                   = False
     is_numeric:        bool                   = False
+    # Whether the column's value comes from the light PR query alone, rather than from
+    # the per-PR comment/LOC fetch or an external service. Only such columns can be
+    # filtered on before those fetches are made (see ReportSpec.narrow_pr_nodes), so
+    # the default is the safe one: a new column is assumed to need more than the light
+    # query until it says otherwise.
+    from_light_query:  bool                   = False
     multi_line_header: tuple[str, ...] | None = None
     cell:              Callable               = field(default=_noop_cell,     compare=False)
     sort_key:          Callable               = field(default=_noop_sort_key, compare=False)

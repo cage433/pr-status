@@ -105,17 +105,17 @@ def _sort_key_yt_state(ctx: PRContext) -> str:
 
 
 PULL_REQUEST_COL = Column(
-    "pull-request", "PR", 6, ("pr",),
+    "pull-request", "PR", 6, ("pr",), from_light_query=True,
     cell=lambda ctx, _: "#%-5s" % ctx.pr.number,
     sort_key=lambda ctx: ctx.pr.number,
 )
 TITLE_COL = Column(
-    "title", "TITLE", 60, ("t",),
+    "title", "TITLE", 60, ("t",), from_light_query=True,
     cell=lambda ctx, _: truncate(ctx.pr.title, 58),
     sort_key=lambda ctx: ctx.pr.title.lower(),
 )
 AUTHOR_COL = Column(
-    "author", "AUTHOR", 15, ("a",),
+    "author", "AUTHOR", 15, ("a",), from_light_query=True,
     cell=lambda ctx, _: ctx.config.author_name(ctx.pr.author),
     sort_key=lambda ctx: ctx.config.author_name(ctx.pr.author).lower(),
 )
@@ -130,7 +130,7 @@ NUM_COMMENTS_COL = Column(
     sort_key=lambda ctx: len(ctx.marked_comments),
 )
 CREATION_DATE_COL = Column(
-    "creation-date", "CREATED", 17, ("cd",), is_timestamp=True,
+    "creation-date", "CREATED", 17, ("cd",), is_timestamp=True, from_light_query=True,
     cell=lambda ctx, st: fmt_ts(ctx.pr.createdAt, st),
     sort_key=lambda ctx: ctx.pr.createdAt or "",
 )
@@ -145,7 +145,7 @@ MY_LAST_COMMENT_COL = Column(
     sort_key=lambda ctx: _last_comment(ctx, user_only=True) or "",
 )
 MARK_COL = Column(
-    "mark", "MARK", 17, ("mk",), is_timestamp=True,
+    "mark", "MARK", 17, ("mk",), is_timestamp=True, from_light_query=True,
     cell=lambda ctx, st: fmt_ts(ctx.marks.get(ctx.pr.number), st, blank_if_empty=True),
     sort_key=lambda ctx: ctx.marks.get(ctx.pr.number) or "",
 )
@@ -153,7 +153,7 @@ COMMENT_COL         = Column("comment",        "COMMENT",         70, ("c",))
 COMMENT_TIME_COL    = Column("comment-time",   "CT",              17, ("ct",),  is_timestamp=True)
 COMMENT_AUTHOR_COL  = Column("comment-author", "CA",              20, ("ca",))
 REVIEWERS_COL = Column(
-    "reviewers", "REVIEWERS", 20, ("r",),
+    "reviewers", "REVIEWERS", 20, ("r",), from_light_query=True,
     cell=_cell_reviewers,
     sort_key=lambda ctx: ", ".join(ctx.config.author_name(r) for r in ctx.pr.reviewers).lower(),
 )
@@ -178,27 +178,27 @@ LAST_ACTIVITY_COL = Column(
     sort_key=lambda ctx: -1 if (d := days_since(ctx.last_activity_ts)) is None else d,
 )
 AGE_COL = Column(
-    "age", "AG", 4, ("ag",), is_numeric=True, multi_line_header=("AGE", "(days)"),
+    "age", "AG", 4, ("ag",), is_numeric=True, from_light_query=True, multi_line_header=("AGE", "(days)"),
     cell=lambda ctx, _: "" if (d := days_since(ctx.pr.createdAt)) is None else str(d),
     sort_key=lambda ctx: days_since(ctx.pr.createdAt) or 0,
 )
 DRAFT_COL = Column(
-    "draft", "D", 5, ("d",),
+    "draft", "D", 5, ("d",), from_light_query=True,
     cell=lambda ctx, _: "true" if ctx.pr.isDraft else "false",
     sort_key=lambda ctx: ctx.pr.isDraft,
 )
 YOUTRACK_TICKET_COL = Column(
-    "youtrack-ticket", "YT", 12, ("yt",),
+    "youtrack-ticket", "YT", 12, ("yt",), from_light_query=True,
     cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "none",
     sort_key=lambda ctx: (m := _yt_match(ctx)) and m.group(1) + "-" + m.group(2) or "none",
 )
 YOUTRACK_PROJECT_COL = Column(
-    "youtrack-project", "YP", 12, ("yp",),
+    "youtrack-project", "YP", 12, ("yp",), from_light_query=True,
     cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(1) or "none",
     sort_key=lambda ctx: (m := _yt_match(ctx)) and m.group(1) or "none",
 )
 YOUTRACK_ID_COL = Column(
-    "youtrack-id", "YI", 7, ("yi",),
+    "youtrack-id", "YI", 7, ("yi",), from_light_query=True,
     cell=lambda ctx, _: (m := _yt_match(ctx)) and m.group(2) or "none",
     sort_key=_sort_key_yt_id,
 )
@@ -213,17 +213,17 @@ VALID_COL = Column(
     sort_key=lambda ctx: _cell_valid(ctx, False) == "true",
 )
 REVIEW_OUTSTANDING_COL = Column(
-    "review-outstanding", "RO", 20, ("ro",),
+    "review-outstanding", "RO", 20, ("ro",), from_light_query=True,
     cell=lambda ctx, _: ", ".join(ctx.config.author_name(r) for r in ctx.pr.outstanding_reviewers),
     sort_key=lambda ctx: ", ".join(ctx.config.author_name(r) for r in ctx.pr.outstanding_reviewers).lower(),
 )
 BRANCH_COL = Column(
-    "branch", "BRANCH", 40, ("b",),
+    "branch", "BRANCH", 40, ("b",), from_light_query=True,
     cell=lambda ctx, _: truncate(ctx.pr.head_ref, 38),
     sort_key=lambda ctx: ctx.pr.head_ref.lower(),
 )
 BUILD_COL = Column(
-    "build", "CI", 4, ("ci",),
+    "build", "CI", 4, ("ci",), from_light_query=True,
     cell=lambda ctx, _: ctx.pr.build_symbol,
     sort_key=_sort_key_build,
 )

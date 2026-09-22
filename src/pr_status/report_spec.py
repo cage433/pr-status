@@ -1,9 +1,15 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ._util import timing_log
 from .column import Column
 from .column_display import ColumnDisplay
+from .config import Config
 from .filter_spec import FilterSpec
+from .github_data import GithubData
+from .github_raw_data import GithubRawData
+from .marks import Marks
+from .node import Node
 from .sort_item import SortItem
 from .report_args import ReportArgs
 
@@ -24,6 +30,32 @@ class ReportSpec:
             | {col for fs in self.filters for col in fs.all_cols}
             | {si.column for si in self.sort_cols}
         )
+
+    @property
+    def pre_fetch_filters(self) -> list[FilterSpec]:
+        """The filters decidable from the light PR query alone, so they can be applied
+        before the per-PR comment/LOC fetch rather than after it."""
+        return [fs for fs in self.filters if all(col.from_light_query for col in fs.all_cols)]
+
+    def narrow_pr_nodes(
+        self, config: Config, marks: Marks, args: ReportArgs, pr_nodes: list[Node],
+    ) -> list[Node]:
+        """Drop the PR nodes a light-query-only filter already excludes, so nothing is
+        fetched for a PR that cannot appear in the report. Purely an optimisation: the
+        authoritative filtering still runs in _report_data_lines over whatever survives,
+        so a column wrongly marked from_light_query would cost a wasted fetch at worst.
+        """
+        filters = self.pre_fetch_filters
+        if not filters:
+            return pr_nodes
+        raw  = GithubRawData(pr_nodes=pr_nodes, loc_results={}, comment_data={})
+        data = GithubData.from_raw(config, marks, args, raw)
+        kept = {pr.number for pr in data.all_prs
+                if all(fs.matches(data.make_ctx(pr, config, marks, {})) for fs in filters)}
+        narrowed = [n for n in pr_nodes if n["number"] in kept]
+        if len(narrowed) < len(pr_nodes):
+            timing_log("pre-fetch filter: %d of %d PRs kept" % (len(narrowed), len(pr_nodes)))
+        return narrowed
 
     def show_time_cols(self, ctx: "PRContext") -> set[str]:
         from .columns import _timestamp_val
