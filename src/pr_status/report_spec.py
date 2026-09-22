@@ -34,8 +34,11 @@ class ReportSpec:
     @property
     def pre_fetch_filters(self) -> list[FilterSpec]:
         """The filters decidable from the light PR query alone, so they can be applied
-        before the per-PR comment/LOC fetch rather than after it."""
-        return [fs for fs in self.filters if all(col.from_light_query for col in fs.all_cols)]
+        before the per-PR comment/LOC fetch rather than after it. A filter naming no
+        column at all — a comparison of two date literals — is left out: `all` over an
+        empty set would wave it through, which is the wrong default here."""
+        return [fs for fs in self.filters
+                if fs.all_cols and all(col.from_light_query for col in fs.all_cols)]
 
     def narrow_pr_nodes(
         self, config: Config, marks: Marks, args: ReportArgs, pr_nodes: list[Node],

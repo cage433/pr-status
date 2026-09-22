@@ -350,6 +350,11 @@ class TestPreFetchFilters(unittest.TestCase):
         self.assertEqual(len(resolve("pr", filters=["cd>mk"]).pre_fetch_filters), 1)
         self.assertEqual(resolve("pr", filters=["lct>mk"]).pre_fetch_filters, [])
 
+    def test_filter_naming_no_column_is_not_pre_fetchable(self):
+        # Two date literals name no column at all, so there is nothing to vouch for it.
+        spec = resolve("pr", filters=["2024-01-01>2023-01-01"])
+        self.assertEqual(spec.pre_fetch_filters, [])
+
     def test_mixed_filters_keep_only_the_light_ones(self):
         spec = resolve("pr", filters=["RO=bob", "UA=0"])
         self.assertEqual([fs.column.name for fs in spec.pre_fetch_filters], ["review-outstanding"])
