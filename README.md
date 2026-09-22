@@ -155,6 +155,20 @@ MCT = LCT         true if the last comment was made at exactly the same time as 
 | `--include-pre-mark-commits` | Include comments before the mark timestamp (see [Marking](#marking)) |
 
 
+## How PRs are found
+
+The list of PRs to report on comes from GitHub's search API, which lets drafts be left
+out server-side and lets an `A=` or `RO=` filter narrow the search itself — asking for
+only your own PRs, or only those awaiting your review, rather than fetching every open
+PR and discarding most of them. A report filtered that way costs a fraction of an
+unfiltered one.
+
+Search reads a separate index from the repository itself, updated moments after the
+event rather than instantly, so a PR opened — or a review requested — seconds ago may
+take a little while to show up. Everything else, including every column value, is read
+from the repository directly.
+
+
 ## Marking
 
 Marking simply records a timestamp against a specific PR, via:
