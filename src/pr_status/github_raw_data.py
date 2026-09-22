@@ -89,31 +89,37 @@ class GithubRawData:
             pr_nodes = GithubRawData.fetch_pr_nodes_filtered(config, args)
         pr_nums = [PRNumber(n["number"]) for n in pr_nodes]
 
-        loc_results: dict[PRNumber, LOC] = {}
-        if "loc" in all_cols:
-            t0 = time.monotonic()
-            with ThreadPoolExecutor(max_workers=workers) as ex:
-                futs = {ex.submit(gh_api.fetch_scala_loc, config.repo, n): n for n in pr_nums}
-                for f in as_completed(futs):
-                    loc_results[futs[f]] = f.result()
-            timing_log("loc: %d PRs in %.3fs (max_threads=%d)" % (len(pr_nums), time.monotonic() - t0, workers))
-
         # Columns needing the full comment payload (bodies / timestamps / top-level
         # comments+reviews) vs those needing only unresolved-thread counts. When only the
         # latter are requested (e.g. the 'all' report), fetch the minimal query.
         FULL_COMMENT_COLS = {"num-comments", "last-comment-time", "my-last-comment-time",
                              "comment", "last-activity"}
         UNRESOLVED_COLS   = {"unresolved (all)", "unresolved (human)", "unresolved (ai)"}
+        want_loc      = "loc" in all_cols
+        want_comments = bool((FULL_COMMENT_COLS | UNRESOLVED_COLS) & all_cols)
+        minimal       = not (FULL_COMMENT_COLS & all_cols)
+
+        # The LOC and comment fetches hit different endpoints and neither reads the
+        # other's answer, so they share one pool rather than running one after the other.
+        loc_results:  dict[PRNumber, LOC]  = {}
         comment_data: dict[PRNumber, Node] = {}
-        if (FULL_COMMENT_COLS | UNRESOLVED_COLS) & all_cols:
-            minimal = not (FULL_COMMENT_COLS & all_cols)
-            t0 = time.monotonic()
-            with ThreadPoolExecutor(max_workers=workers) as ex:
-                futs = {ex.submit(gh_api.fetch_pr_comment_data, config.repo, n, minimal): n for n in pr_nums}
-                for f in as_completed(futs):
-                    comment_data[futs[f]] = f.result()
-            timing_log("comments: %d PRs in %.3fs (max_threads=%d%s)"
-                       % (len(pr_nums), time.monotonic() - t0, workers, ", minimal" if minimal else ""))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            loc_futs = {ex.submit(gh_api.fetch_scala_loc, config.repo, n): n
+                        for n in pr_nums} if want_loc else {}
+            com_futs = {ex.submit(gh_api.fetch_pr_comment_data, config.repo, n, minimal): n
+                        for n in pr_nums} if want_comments else {}
+            for f in as_completed(loc_futs):
+                loc_results[loc_futs[f]] = f.result()
+            t_loc = time.monotonic() - t_start
+            for f in as_completed(com_futs):
+                comment_data[com_futs[f]] = f.result()
+            t_com = time.monotonic() - t_start
+        # Both times are measured from the same start, since the two runs overlap.
+        if loc_futs:
+            timing_log("loc: %d PRs by %.3fs (max_threads=%d)" % (len(pr_nums), t_loc, workers))
+        if com_futs:
+            timing_log("comments: %d PRs by %.3fs (max_threads=%d%s)"
+                       % (len(pr_nums), t_com, workers, ", minimal" if minimal else ""))
 
         timing_log("github data fetch: %.3fs" % (time.monotonic() - t_start))
         return GithubRawData(pr_nodes=pr_nodes, loc_results=loc_results, comment_data=comment_data)
