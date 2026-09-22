@@ -360,6 +360,48 @@ class TestPreFetchFilters(unittest.TestCase):
         self.assertEqual([fs.column.name for fs in spec.pre_fetch_filters], ["review-outstanding"])
 
 
+class TestSearchQualifiers(unittest.TestCase):
+
+    def qualifiers(self, filters: list[str], **config_kwargs) -> list[str]:
+        return resolve("pr", filters=filters).search_qualifiers(make_config(**config_kwargs))
+
+    def test_author_filter_becomes_an_author_qualifier(self):
+        self.assertEqual(self.qualifiers(["A=alex"], author_names={"cage433": "alex"}),
+                         ["author:cage433"])
+
+    def test_author_value_with_no_mapping_is_taken_as_a_login(self):
+        self.assertEqual(self.qualifiers(["A=bob"]), ["author:bob"])
+
+    def test_several_authors_are_asked_for_at_once(self):
+        # Repeated author: qualifiers are ORed, which is what a multi-valued filter means.
+        self.assertEqual(self.qualifiers(["A=alex,bob"], author_names={"cage433": "alex"}),
+                         ["author:cage433", "author:bob"])
+
+    def test_review_outstanding_becomes_a_review_requested_qualifier(self):
+        self.assertEqual(self.qualifiers(["RO=alex"], author_names={"cage433": "alex"}),
+                         ["review-requested:cage433"])
+
+    def test_review_outstanding_over_several_logins_is_not_pushed_down(self):
+        # GitHub does not OR repeated review-requested: qualifiers, so the filter has to
+        # stay client-side; the search is just wider.
+        self.assertEqual(self.qualifiers(["RO=alex,bob"]), [])
+        self.assertEqual(self.qualifiers(["RO=alex"], author_names={"a": "alex", "b": "alex"}), [])
+
+    def test_negated_filter_is_not_pushed_down(self):
+        self.assertEqual(self.qualifiers(["A!=alex"], author_names={"cage433": "alex"}), [])
+
+    def test_none_is_not_pushed_down(self):
+        self.assertEqual(self.qualifiers(["RO=none"]), [])
+
+    def test_other_columns_are_not_pushed_down(self):
+        self.assertEqual(self.qualifiers(["R=alex"], author_names={"cage433": "alex"}), [])
+        self.assertEqual(self.qualifiers(["V=false"]), [])
+
+    def test_qualifiers_from_several_filters_are_combined(self):
+        self.assertEqual(self.qualifiers(["A=bob", "RO=carol"]),
+                         ["author:bob", "review-requested:carol"])
+
+
 class TestNarrowPrNodes(unittest.TestCase):
 
     def setUp(self):

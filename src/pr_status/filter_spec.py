@@ -7,6 +7,7 @@ from .column import Column, _ListError
 from .date_utils import parse_date_literal
 
 if TYPE_CHECKING:
+    from .config import Config
     from .pr_context import PRContext
     from .github_data import GithubComment
 
@@ -19,6 +20,15 @@ class FilterSpec(ABC):
     @property
     def uses_comment_time(self) -> bool:
         return False
+
+    def search_qualifiers(self, config: "Config") -> list[str]:
+        """Qualifiers that push this filter into the GitHub search for the PR list, so
+        PRs it excludes are never fetched. Returning [] is always safe: the filter is
+        applied to the results either way, and an un-pushed one just costs a wider
+        search. What is returned must therefore never narrow past what the filter
+        itself rejects.
+        """
+        return []
 
     @abstractmethod
     def matches(self, ctx: "PRContext") -> bool: ...
@@ -86,6 +96,24 @@ class ColumnFilterSpec(FilterSpec):
     def uses_comment_time(self) -> bool:
         from .columns import COMMENT_TIME_COL
         return self.column == COMMENT_TIME_COL
+
+    def search_qualifiers(self, config: "Config") -> list[str]:
+        from .columns import AUTHOR_COL, REVIEW_OUTSTANDING_COL
+        if self.negate or "none" in self.values:
+            # A negated qualifier over a login GitHub does not know matches nothing at
+            # all rather than everything, and 'none' names no login to ask about.
+            return []
+        logins = [login for value in sorted(self.values) for login in config.logins_for_name(value)]
+        if self.column == AUTHOR_COL:
+            # Repeated author: qualifiers are ORed, which is what a multi-valued filter
+            # means, so every login can be asked for at once.
+            return ["author:" + login for login in logins]
+        if self.column == REVIEW_OUTSTANDING_COL and len(logins) == 1:
+            # Repeated review-requested: qualifiers are not ORed — GitHub returns
+            # something that is neither the union nor the intersection — so only a
+            # filter naming exactly one login can be pushed into the search.
+            return ["review-requested:" + logins[0]]
+        return []
 
     def matches(self, ctx: "PRContext") -> bool:
         from .columns import PULL_REQUEST_COL, REVIEWERS_COL, REVIEW_OUTSTANDING_COL

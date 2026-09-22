@@ -153,7 +153,8 @@ def run_report(
         # Fetch the light PR query first; its titles give the YouTrack ticket ids, so we
         # can run the (independent) YouTrack lookup concurrently with the slow per-PR
         # comment/LOC fetch rather than after it.
-        pr_nodes = GithubRawData.fetch_pr_nodes_filtered(config, args)
+        pr_nodes = GithubRawData.fetch_pr_nodes_filtered(
+            config, args, spec.search_qualifiers(config))
         # Filters that only read the light query — e.g. --filter RO=@me — can be settled
         # now, so a PR that cannot appear in the report costs no LOC, comment or
         # YouTrack fetch at all.

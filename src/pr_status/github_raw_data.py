@@ -65,13 +65,25 @@ class GithubRawData:
         return (total, human, ai)
 
     @staticmethod
-    def fetch_pr_nodes_filtered(config: Config, args: ReportArgs) -> list[Node]:
+    def search_query(config: Config, args: ReportArgs, qualifiers: list[str]) -> str:
+        """The GitHub search naming the PRs worth fetching: the repo's open PRs, minus
+        drafts unless they were asked for, minus whatever the report's own filters can
+        be pushed into (see FilterSpec.search_qualifiers)."""
+        terms = ["repo:%s/%s" % (config.repo.owner, config.repo.repo_name), "is:pr", "is:open"]
+        if not args.include_drafts:
+            terms.append("draft:false")
+        return " ".join(terms + qualifiers)
+
+    @staticmethod
+    def fetch_pr_nodes_filtered(config: Config, args: ReportArgs,
+                                qualifiers: list[str] | None = None) -> list[Node]:
         """The light PR query plus the filters that decide whether a PR is reported at
         all. Split out so callers can get PR titles (hence YouTrack ticket ids) early,
         before the slow per-PR comment/LOC fetch."""
         t0 = time.monotonic()
-        pr_nodes = gh_api.fetch_pr_nodes(config.repo)
-        timing_log("fetch_pr_nodes: %d PRs in %.3fs" % (len(pr_nodes), time.monotonic() - t0))
+        query = GithubRawData.search_query(config, args, qualifiers or [])
+        pr_nodes = gh_api.fetch_pr_nodes(config.repo, query)
+        timing_log("fetch_pr_nodes: %d PRs in %.3fs [%s]" % (len(pr_nodes), time.monotonic() - t0, query))
         # Exclude PRs that won't be reported *before* fetching their per-PR data, so we
         # don't pay for comment/LOC fetches on drafts (dropped unless --include-drafts).
         return [n for n in pr_nodes

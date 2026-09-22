@@ -40,6 +40,16 @@ class Config:
     def author_name(self, author: str) -> str:
         return self.author_names.get(author, author)
 
+    def logins_for_name(self, name: str) -> list[str]:
+        """The GitHub logins a filter value names. Filter values are matched against
+        author_name(login), so a value is either a configured display name — possibly
+        shared by several logins — or, when the config maps nothing to it, a login
+        itself. A display name that is also someone else's login is read as the display
+        name.
+        """
+        mapped = [login for login, n in self.author_names.items() if n == name]
+        return mapped or [name]
+
     def is_ai_author(self, login: str) -> bool:
         return login in self.ai_authors or login.removesuffix("[bot]") in self.ai_authors
 

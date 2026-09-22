@@ -40,6 +40,10 @@ class ReportSpec:
         return [fs for fs in self.filters
                 if fs.all_cols and all(col.from_light_query for col in fs.all_cols)]
 
+    def search_qualifiers(self, config: Config) -> list[str]:
+        """What the report's filters contribute to the GitHub search for the PR list."""
+        return [q for fs in self.filters for q in fs.search_qualifiers(config)]
+
     def narrow_pr_nodes(
         self, config: Config, marks: Marks, args: ReportArgs, pr_nodes: list[Node],
     ) -> list[Node]:

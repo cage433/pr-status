@@ -80,7 +80,31 @@ PR_FIELDS_REVIEWS = """
         }
 """
 
-GRAPHQL_QUERY_LIGHT = """
+# The open PRs are listed through the search API rather than the repository's
+# pullRequests connection, because only search can leave out drafts (about half the
+# open PRs here) and narrow to an author or a requested reviewer server-side. Search
+# reads a separate, eventually-consistent index, so a PR opened — or a review requested
+# — a moment ago may take a little while to appear.
+SEARCH_QUERY = """
+query($q: String!, $cursor: String) {
+  search(query: $q, type: ISSUE, first: 100, after: $cursor) {
+    issueCount
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      ... on PullRequest {%s      }
+    }
+  }
+}
+"""
+
+# Search will not return more than this many results however many match, so a query
+# reaching it is answered from the repository's pullRequests connection instead.
+SEARCH_RESULT_LIMIT = 1000
+
+CONNECTION_QUERY = """
 query($owner: String!, $repo: String!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequests(states: OPEN, first: 100, after: $cursor) {
@@ -149,14 +173,41 @@ def get_gh_user() -> str:
     return r.stdout.strip()
 
 
-def _fetch_pr_pages(repo: GithubInfo, fields: str, label: str) -> list[Node]:
+def _fetch_search_pages(query: str, fields: str, label: str) -> tuple[list[Node], int]:
+    """The PRs matching a search query, and how many GitHub says match in all — which
+    exceeds what it will hand over once it passes SEARCH_RESULT_LIMIT."""
+    nodes: list[Node] = []
+    issue_count = 0
+    cursor: str | None = None
+    page = 0
+    while True:
+        page += 1
+        cmd = ["gh", "api", "graphql",
+               "-f", "query=" + SEARCH_QUERY % fields,
+               "-f", "q=" + query]
+        if cursor:
+            cmd += ["-f", "cursor=" + cursor]
+        result = _run_gh(cmd, "pr-search(%s) page %d" % (label, page))
+        if result.returncode != 0:
+            print("Error fetching PRs: " + result.stderr, file=sys.stderr)
+            sys.exit(1)
+        data = json.loads(result.stdout)["data"]["search"]
+        nodes.extend(data["nodes"])
+        issue_count = data["issueCount"]
+        if data["pageInfo"]["hasNextPage"]:
+            cursor = data["pageInfo"]["endCursor"]
+        else:
+            return nodes, issue_count
+
+
+def _fetch_connection_pages(repo: GithubInfo, fields: str, label: str) -> list[Node]:
     nodes: list[Node] = []
     cursor: str | None = None
     page = 0
     while True:
         page += 1
         cmd = ["gh", "api", "graphql",
-               "-f", "query=" + GRAPHQL_QUERY_LIGHT % fields,
+               "-f", "query=" + CONNECTION_QUERY % fields,
                "-f", "owner=" + repo.owner,
                "-f", "repo=" + repo.repo_name]
         if cursor:
@@ -165,32 +216,48 @@ def _fetch_pr_pages(repo: GithubInfo, fields: str, label: str) -> list[Node]:
         if result.returncode != 0:
             print("Error fetching PRs: " + result.stderr, file=sys.stderr)
             sys.exit(1)
-        data = json.loads(result.stdout)
-        pr_data = data["data"]["repository"]["pullRequests"]
-        nodes.extend(pr_data["nodes"])
-        if pr_data["pageInfo"]["hasNextPage"]:
-            cursor = pr_data["pageInfo"]["endCursor"]
+        data = json.loads(result.stdout)["data"]["repository"]["pullRequests"]
+        nodes.extend(data["nodes"])
+        if data["pageInfo"]["hasNextPage"]:
+            cursor = data["pageInfo"]["endCursor"]
         else:
             return nodes
 
 
-def fetch_pr_nodes(repo: GithubInfo) -> list[Node]:
-    """The open PRs, each a node carrying both field groups merged into one dict.
+def _merge_field_groups(core: list[Node], reviews: list[Node]) -> list[Node]:
+    """One node per PR carrying both field groups.
 
     The core group decides which PRs are reported: a PR the reviews group saw but the
     core group did not (one opened between the two fetches) is dropped, since without
     the core fields there is nothing to report about it. One the core group saw but the
     reviews group did not simply has no reviews recorded.
     """
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        core_future    = ex.submit(_fetch_pr_pages, repo, PR_FIELDS_CORE,    "core")
-        reviews_future = ex.submit(_fetch_pr_pages, repo, PR_FIELDS_REVIEWS, "reviews")
-        core, reviews  = core_future.result(), reviews_future.result()
     by_number = {n["number"]: n for n in core}
     for n in reviews:
         if (node := by_number.get(n["number"])) is not None:
             node.update(n)
-    return list(by_number.values())
+    return sorted(by_number.values(), key=lambda n: n["number"])
+
+
+def _fetch_both_groups(fetch_group) -> list[Node]:
+    """Run a fetch for each field group at once. GitHub takes roughly as long over a
+    group of PR fields as over all of them, so asking for both together costs the slower
+    group rather than the sum."""
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        core_future    = ex.submit(fetch_group, PR_FIELDS_CORE,    "core")
+        reviews_future = ex.submit(fetch_group, PR_FIELDS_REVIEWS, "reviews")
+        return core_future.result(), reviews_future.result()
+
+
+def fetch_pr_nodes(repo: GithubInfo, search_query: str) -> list[Node]:
+    (core, issue_count), (reviews, _) = _fetch_both_groups(
+        lambda fields, label: _fetch_search_pages(search_query, fields, label))
+    if issue_count > SEARCH_RESULT_LIMIT:
+        timing_log("search matched %d PRs, past the %d it will return; using the "
+                   "pullRequests connection instead" % (issue_count, SEARCH_RESULT_LIMIT))
+        core, reviews = _fetch_both_groups(
+            lambda fields, label: _fetch_connection_pages(repo, fields, label))
+    return _merge_field_groups(core, reviews)
 
 
 def fetch_scala_loc(repo: GithubInfo, pr_num: PRNumber) -> LOC:
