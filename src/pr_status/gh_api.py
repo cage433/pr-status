@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from ._util import timing_log
 from .config import GithubInfo
@@ -20,15 +21,11 @@ def _run_gh(cmd: list[str], label: str) -> "subprocess.CompletedProcess[str]":
         timing_log("%s %.3fs" % (label, dt))
     return r
 
-GRAPHQL_QUERY_LIGHT = """
-query($owner: String!, $repo: String!, $cursor: String) {
-  repository(owner: $owner, name: $repo) {
-    pullRequests(states: OPEN, first: 100, after: $cursor) {
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-      nodes {
+# The light PR query, split into two groups of fields fetched concurrently. GitHub
+# takes roughly as long for a group as for the whole query, so asking for both at once
+# costs the time of the slower group rather than the sum: about 5s rather than 8s for
+# this repo's 100 open PRs.
+PR_FIELDS_CORE = """
         number
         title
         isDraft
@@ -43,16 +40,6 @@ query($owner: String!, $repo: String!, $cursor: String) {
               ... on User { login }
               ... on Team { name }
             }
-          }
-        }
-        # `body` rather than `bodyText`: only its emptiness is read (see
-        # _is_submitted_review), and GitHub renders bodyText per review, which costs
-        # ~4s on a 100-PR page here.
-        reviews(first: 100) {
-          nodes {
-            author { login }
-            state
-            body
           }
         }
         timelineItems(last: 20, itemTypes: [REVIEW_REQUESTED_EVENT]) {
@@ -78,7 +65,30 @@ query($owner: String!, $repo: String!, $cursor: String) {
             }
           }
         }
+"""
+
+# `body` rather than `bodyText`: only its emptiness is read (see _is_submitted_review),
+# and GitHub renders bodyText per review, which costs several seconds a page here.
+PR_FIELDS_REVIEWS = """
+        number
+        reviews(first: 100) {
+          nodes {
+            author { login }
+            state
+            body
+          }
+        }
+"""
+
+GRAPHQL_QUERY_LIGHT = """
+query($owner: String!, $repo: String!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(states: OPEN, first: 100, after: $cursor) {
+      pageInfo {
+        hasNextPage
+        endCursor
       }
+      nodes {%s      }
     }
   }
 }
@@ -139,19 +149,19 @@ def get_gh_user() -> str:
     return r.stdout.strip()
 
 
-def fetch_pr_nodes(repo: GithubInfo) -> list[Node]:
+def _fetch_pr_pages(repo: GithubInfo, fields: str, label: str) -> list[Node]:
     nodes: list[Node] = []
     cursor: str | None = None
     page = 0
     while True:
         page += 1
         cmd = ["gh", "api", "graphql",
-               "-f", "query=" + GRAPHQL_QUERY_LIGHT,
+               "-f", "query=" + GRAPHQL_QUERY_LIGHT % fields,
                "-f", "owner=" + repo.owner,
                "-f", "repo=" + repo.repo_name]
         if cursor:
             cmd += ["-f", "cursor=" + cursor]
-        result = _run_gh(cmd, "pr-nodes page %d" % page)
+        result = _run_gh(cmd, "pr-nodes(%s) page %d" % (label, page))
         if result.returncode != 0:
             print("Error fetching PRs: " + result.stderr, file=sys.stderr)
             sys.exit(1)
@@ -161,8 +171,26 @@ def fetch_pr_nodes(repo: GithubInfo) -> list[Node]:
         if pr_data["pageInfo"]["hasNextPage"]:
             cursor = pr_data["pageInfo"]["endCursor"]
         else:
-            break
-    return nodes
+            return nodes
+
+
+def fetch_pr_nodes(repo: GithubInfo) -> list[Node]:
+    """The open PRs, each a node carrying both field groups merged into one dict.
+
+    The core group decides which PRs are reported: a PR the reviews group saw but the
+    core group did not (one opened between the two fetches) is dropped, since without
+    the core fields there is nothing to report about it. One the core group saw but the
+    reviews group did not simply has no reviews recorded.
+    """
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        core_future    = ex.submit(_fetch_pr_pages, repo, PR_FIELDS_CORE,    "core")
+        reviews_future = ex.submit(_fetch_pr_pages, repo, PR_FIELDS_REVIEWS, "reviews")
+        core, reviews  = core_future.result(), reviews_future.result()
+    by_number = {n["number"]: n for n in core}
+    for n in reviews:
+        if (node := by_number.get(n["number"])) is not None:
+            node.update(n)
+    return list(by_number.values())
 
 
 def fetch_scala_loc(repo: GithubInfo, pr_num: PRNumber) -> LOC:
