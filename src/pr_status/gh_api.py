@@ -3,12 +3,16 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, TypeVar
 
 from ._util import timing_log
 from .config import GithubInfo
 from .loc import LOC
 from .node import Node
 from .pr_number import PRNumber
+
+
+T = TypeVar("T")
 
 
 def _run_gh(cmd: list[str], label: str) -> "subprocess.CompletedProcess[str]":
@@ -239,10 +243,10 @@ def _merge_field_groups(core: list[Node], reviews: list[Node]) -> list[Node]:
     return sorted(by_number.values(), key=lambda n: n["number"])
 
 
-def _fetch_both_groups(fetch_group) -> list[Node]:
-    """Run a fetch for each field group at once. GitHub takes roughly as long over a
-    group of PR fields as over all of them, so asking for both together costs the slower
-    group rather than the sum."""
+def _fetch_both_groups(fetch_group: "Callable[[str, str], T]") -> "tuple[T, T]":
+    """Run a fetch for each field group at once, returning what each answered. GitHub
+    takes roughly as long over a group of PR fields as over all of them, so asking for
+    both together costs the slower group rather than the sum."""
     with ThreadPoolExecutor(max_workers=2) as ex:
         core_future    = ex.submit(fetch_group, PR_FIELDS_CORE,    "core")
         reviews_future = ex.submit(fetch_group, PR_FIELDS_REVIEWS, "reviews")

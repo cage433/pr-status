@@ -103,16 +103,18 @@ class ColumnFilterSpec(FilterSpec):
             # A negated qualifier over a login GitHub does not know matches nothing at
             # all rather than everything, and 'none' names no login to ask about.
             return []
-        logins = [login for value in sorted(self.values) for login in config.logins_for_name(value)]
         if self.column == AUTHOR_COL:
             # Repeated author: qualifiers are ORed, which is what a multi-valued filter
-            # means, so every login can be asked for at once.
-            return ["author:" + login for login in logins]
-        if self.column == REVIEW_OUTSTANDING_COL and len(logins) == 1:
+            # means, so every login a value could name can be asked for at once.
+            return ["author:" + login
+                    for value in sorted(self.values)
+                    for login in config.logins_for_name(value)]
+        if self.column == REVIEW_OUTSTANDING_COL and len(self.values) == 1:
             # Repeated review-requested: qualifiers are not ORed — GitHub returns
             # something that is neither the union nor the intersection — so only a
             # filter naming exactly one login can be pushed into the search.
-            return ["review-requested:" + logins[0]]
+            login = config.login_for_name(next(iter(self.values)))
+            return ["review-requested:" + login] if login else []
         return []
 
     def matches(self, ctx: "PRContext") -> bool:

@@ -366,8 +366,10 @@ class TestSearchQualifiers(unittest.TestCase):
         return resolve("pr", filters=filters).search_qualifiers(make_config(**config_kwargs))
 
     def test_author_filter_becomes_an_author_qualifier(self):
+        # The value could also be the login of an account the config says nothing
+        # about, and repeated author: qualifiers are ORed, so both are asked for.
         self.assertEqual(self.qualifiers(["A=alex"], author_names={"cage433": "alex"}),
-                         ["author:cage433"])
+                         ["author:cage433", "author:alex"])
 
     def test_author_value_with_no_mapping_is_taken_as_a_login(self):
         self.assertEqual(self.qualifiers(["A=bob"]), ["author:bob"])
@@ -375,11 +377,14 @@ class TestSearchQualifiers(unittest.TestCase):
     def test_several_authors_are_asked_for_at_once(self):
         # Repeated author: qualifiers are ORed, which is what a multi-valued filter means.
         self.assertEqual(self.qualifiers(["A=alex,bob"], author_names={"cage433": "alex"}),
-                         ["author:cage433", "author:bob"])
+                         ["author:cage433", "author:alex", "author:bob"])
 
     def test_review_outstanding_becomes_a_review_requested_qualifier(self):
         self.assertEqual(self.qualifiers(["RO=alex"], author_names={"cage433": "alex"}),
                          ["review-requested:cage433"])
+
+    def test_review_outstanding_value_with_no_mapping_is_taken_as_a_login(self):
+        self.assertEqual(self.qualifiers(["RO=bob"]), ["review-requested:bob"])
 
     def test_review_outstanding_over_several_logins_is_not_pushed_down(self):
         # GitHub does not OR repeated review-requested: qualifiers, so the filter has to

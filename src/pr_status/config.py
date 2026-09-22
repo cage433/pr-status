@@ -41,14 +41,26 @@ class Config:
         return self.author_names.get(author, author)
 
     def logins_for_name(self, name: str) -> list[str]:
-        """The GitHub logins a filter value names. Filter values are matched against
-        author_name(login), so a value is either a configured display name — possibly
-        shared by several logins — or, when the config maps nothing to it, a login
-        itself. A display name that is also someone else's login is read as the display
-        name.
+        """Every login a filter value names — exactly those whose author_name is `name`.
+        That is the logins the config gives that display name, plus the value itself
+        unless the config names it, since author_name falls back to the login.
+        """
+        logins = [login for login, n in self.author_names.items() if n == name]
+        if name not in self.author_names:
+            logins.append(name)
+        return logins
+
+    def login_for_name(self, name: str) -> str:
+        """The one login a value names, for a search qualifier that cannot be repeated,
+        or "" when no single login will do. Unlike logins_for_name this reads a value
+        the config maps as that mapping alone, dropping the chance that it is also the
+        login of an account the config says nothing about: a qualifier that cannot be
+        ORed has no way to cover both.
         """
         mapped = [login for login, n in self.author_names.items() if n == name]
-        return mapped or [name]
+        if mapped:
+            return mapped[0] if len(mapped) == 1 else ""
+        return name
 
     def is_ai_author(self, login: str) -> bool:
         return login in self.ai_authors or login.removesuffix("[bot]") in self.ai_authors
