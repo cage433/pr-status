@@ -37,6 +37,9 @@ class ColumnDisplay:
             return max(self.column.width, max(len(l) for l in self.header_lines))
         return self.column.width
 
+    def format_total(self, total: float) -> str:
+        return self.column.format_total(total)
+
     def cell(self, ctx: "PRContext", show_time: bool = False) -> str:
         return self.column.cell(ctx, show_time)
 

@@ -32,6 +32,11 @@ class ReportSpec:
         )
 
     @property
+    def needs_youtrack(self) -> bool:
+        """Whether any column the report uses is read from a YouTrack ticket."""
+        return any(col.needs_youtrack for col in self.all_cols)
+
+    @property
     def pre_fetch_filters(self) -> list[FilterSpec]:
         """The filters decidable from the light PR query alone, so they can be applied
         before the per-PR comment/LOC fetch rather than after it. A filter naming no

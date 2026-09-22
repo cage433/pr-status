@@ -10,6 +10,7 @@ from pr_status.column import _ListError
 from pr_status.report import Report, _report_data_lines
 from pr_status.report_args import ReportArgs
 from pr_status.report_spec import ReportSpec
+from pr_status.youtrack_issue import YoutrackIssue
 
 
 def make_config(**kwargs) -> Config:
@@ -95,9 +96,14 @@ def make_data(
     unresolved_counts: dict[PRNumber, tuple[int, int, int]] | None = None,
     last_activity: dict[PRNumber, str] | None = None,
     youtrack_states: dict[str, str] | None = None,
+    youtrack_issues: dict[str, YoutrackIssue] | None = None,
 ) -> GithubData:
     prs = prs or []
     pr_nums = [pr.number for pr in prs]
+    # Most tests care only about a ticket's state; youtrack_states names one per ticket
+    # and leaves its other fields empty. Pass youtrack_issues to set any of the rest.
+    issues = {tid: YoutrackIssue(state=st) for tid, st in (youtrack_states or {}).items()}
+    issues.update(youtrack_issues or {})
     return GithubData(
         all_prs=prs,
         loc_results=loc_results or {},
@@ -105,7 +111,7 @@ def make_data(
         rows_all=rows_all if rows_all is not None else {n: [] for n in pr_nums},
         unresolved_counts=unresolved_counts or {},
         last_activity=last_activity or {},
-        youtrack_states=youtrack_states or {},
+        youtrack_issues=issues,
     )
 
 
@@ -967,7 +973,7 @@ class TestYSColumn(unittest.TestCase):
 
     def _run(self, columns: str, data: GithubData, **kwargs) -> list[list[str]]:
         kwargs.setdefault('config', make_config(youtrack_url="http://yt", youtrack_token="tok"))
-        with patch("pr_status.report.youtrack.fetch_states", return_value=data.youtrack_states):
+        with patch("pr_status.report.youtrack.fetch_issues", return_value=data.youtrack_issues):
             return run(columns, data=data, **kwargs)
 
     def test_ys_none_when_no_ticket(self):
@@ -1093,6 +1099,93 @@ class TestReviewOutstandingColumn(unittest.TestCase):
         self.assertIn("1", rows[0][0])
 
 
+class TestYoutrackFieldColumns(unittest.TestCase):
+
+    _ISSUE = YoutrackIssue(
+        state="Review",
+        dev_deadline="2026-09-15",
+        release_cycle="Release 2.36 9th October 2026",
+        committed="Not Committed",
+        estimate_days=5.0,
+        estimate_uncertainty="Medium",
+        issue_type="Feature",
+        risk_complexity="Small",
+    )
+
+    def _run(self, columns: str, issues: dict[str, YoutrackIssue] | None = None,
+             prs: list[GithubPR] | None = None, **kwargs) -> list[list[str]]:
+        issues = {"PROJ-1": self._ISSUE} if issues is None else issues
+        data = make_data(prs=prs or [make_pr(1, title="PROJ-1 some feature")],
+                         youtrack_issues=issues)
+        config = make_config(youtrack_url="http://yt", youtrack_token="tok")
+        with patch("pr_status.report.youtrack.fetch_issues", return_value=issues):
+            return run(columns, data=data, config=config, **kwargs)
+
+    def test_each_field_reaches_its_column(self):
+        rows = self._run("dd,rc,rn,rd,cm,es,eu,ty,rk")
+        self.assertEqual(rows[0], ["2026-09-15", "Release 2.36 9th October 2026", "2.36",
+                                   "2026-10-09", "Not Committed", "5.0", "Medium",
+                                   "Feature", "Small"])
+
+    def test_aliases_resolve_to_the_right_columns(self):
+        spec = make_spec("dd,rc,rn,rd,cm,es,eu,ty,rk")
+        self.assertEqual([c.name for c in spec.cols],
+                         ["dev-deadline", "release-cycle", "release-number", "release-date",
+                          "committed", "estimate", "estimate-uncertainty", "type",
+                          "risk-complexity"])
+
+    def test_a_pr_with_no_ticket_shows_blanks(self):
+        rows = self._run("dd,rn,rd,cm,es,eu,ty,rk", prs=[make_pr(1, title="no ticket here")])
+        self.assertEqual(rows[0], [""] * 8)
+
+    def test_a_ticket_that_could_not_be_read_shows_blanks_but_keeps_its_state(self):
+        rows = self._run("ys,rn,es", issues={"PROJ-1": YoutrackIssue(state="NOT FOUND")})
+        self.assertEqual(rows[0], ["NOT FOUND", "", ""])
+
+    def test_an_unset_estimate_is_blank_rather_than_zero(self):
+        rows = self._run("es", issues={"PROJ-1": YoutrackIssue(state="Review")})
+        self.assertEqual(rows[0], [""])
+
+    def test_estimate_totals_across_prs(self):
+        prs    = [make_pr(1, title="PROJ-1 one"), make_pr(2, title="PROJ-2 two")]
+        issues = {"PROJ-1": YoutrackIssue(estimate_days=5.0),
+                  "PROJ-2": YoutrackIssue(estimate_days=2.0)}
+        report = Report(cols=make_spec("es").cols, rows=self._run("es", issues=issues, prs=prs))
+        # Aggregating groups every row together, since estimate is the only column.
+        self.assertEqual(report.aggregate().rows, [["7.0"]])
+
+    def test_filtering_on_a_youtrack_field(self):
+        prs    = [make_pr(1, title="PROJ-1 one"), make_pr(2, title="PROJ-2 two")]
+        issues = {"PROJ-1": YoutrackIssue(issue_type="Bug"),
+                  "PROJ-2": YoutrackIssue(issue_type="Feature")}
+        rows = self._run("pr,ty", issues=issues, prs=prs, filters=["TY=Bug"])
+        self.assertEqual([r[1] for r in rows], ["Bug"])
+
+    def test_sorting_puts_an_unscheduled_release_last(self):
+        prs    = [make_pr(1, title="PROJ-1 one"), make_pr(2, title="PROJ-2 two"),
+                  make_pr(3, title="PROJ-3 three")]
+        issues = {"PROJ-1": YoutrackIssue(release_cycle="Release 2.36 9th October 2026"),
+                  "PROJ-2": YoutrackIssue(),
+                  "PROJ-3": YoutrackIssue(release_cycle="Release 2.34 26th June 26")}
+        rows = self._run("rd", issues=issues, prs=prs, sort="rd")
+        self.assertEqual([r[0] for r in rows], ["2026-06-26", "2026-10-09", ""])
+
+
+class TestYoutrackFetchIsOnlyForColumnsThatNeedIt(unittest.TestCase):
+
+    def test_a_youtrack_field_column_requires_credentials(self):
+        for col in ("dd", "rc", "rn", "rd", "cm", "es", "eu", "ty", "rk"):
+            self.assertTrue(make_spec(col).needs_youtrack, col)
+
+    def test_columns_read_from_the_pr_itself_do_not(self):
+        # The ticket id, project and number come out of the PR title, not from YouTrack.
+        for col in ("pr,t,a", "yt", "yp", "yi", "r,ci,b"):
+            self.assertFalse(make_spec(col).needs_youtrack, col)
+
+    def test_a_filter_on_a_youtrack_field_requires_credentials(self):
+        self.assertTrue(ReportSpec.resolve(make_args(columns="pr", filters=["TY=Bug"])).needs_youtrack)
+
+
 class TestValidColumn(unittest.TestCase):
 
     _YT_STATES = {"PROJ-1": "Review"}
@@ -1102,7 +1195,7 @@ class TestValidColumn(unittest.TestCase):
 
     def _run(self, columns: str, data: GithubData, **kwargs) -> list[list[str]]:
         kwargs.setdefault('config', make_config(youtrack_url="http://yt", youtrack_token="tok"))
-        with patch("pr_status.report.youtrack.fetch_states", return_value=data.youtrack_states):
+        with patch("pr_status.report.youtrack.fetch_issues", return_value=data.youtrack_issues):
             return run(columns, data=data, **kwargs)
 
     def test_valid_true_when_all_conditions_met(self):
@@ -1211,7 +1304,7 @@ class TestValidColumn(unittest.TestCase):
         invalid_pr = make_pr(2, title="NOPE-9 not in youtrack", reviewers=["bob"])
         config = make_config(youtrack_url="http://yt", youtrack_token="tok")
         data   = make_data(prs=[valid_pr, invalid_pr])   # no pre-populated states
-        with patch("pr_status.report.youtrack.fetch_states", return_value={"PROJ-1": "Review"}):
+        with patch("pr_status.report.youtrack.fetch_issues", return_value={"PROJ-1": YoutrackIssue(state="Review")}):
             rows = run("pr,v", filters=["v=false"], config=config, data=data)
         self.assertEqual(len(rows), 1)
         self.assertIn("2", rows[0][0])
@@ -1232,7 +1325,7 @@ class TestYoutrackColumns(unittest.TestCase):
     def test_no_error_when_youtrack_credentials_present(self):
         data = make_data(prs=[make_pr(1, title="PROJ-1 feature")])
         config = make_config(youtrack_url="https://yt.example.com", youtrack_token="tok")
-        with patch("pr_status.report.youtrack.fetch_states", return_value={}):
+        with patch("pr_status.report.youtrack.fetch_issues", return_value={}):
             rows = run("pr,v", config=config, data=data)
         self.assertEqual(rows[0][1], "false")  # no YT state → not valid, but no error
 

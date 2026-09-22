@@ -24,7 +24,7 @@ from .column import _ListError
 from .column_display import ColumnDisplay
 from .columns import (
     _YT_RE,
-    YOUTRACK_STATE_COL, VALID_COL, WORKDAYS_COL,
+    WORKDAYS_COL,
 )
 from .filter_spec import FilterSpec
 from .sort_item import SortItem
@@ -36,6 +36,7 @@ from .report_args import ReportArgs
 from . import youtrack
 from .timely_cache import ensure_cache_current, is_cache_current, load_yt_workdays
 from .report_spec import ReportSpec
+from .youtrack_issue import YoutrackIssue
 
 
 @dataclass
@@ -72,8 +73,7 @@ class Report:
             for j, ni in enumerate(numeric_idx):
                 t = grouped[key][j]
                 if t is not None:
-                    c = self.cols[ni]
-                    new_row[ni] = ("%.1f" % t) if c.column == WORKDAYS_COL else str(int(t))
+                    new_row[ni] = self.cols[ni].format_total(t)
             new_rows.append(new_row)
         return Report(cols=self.cols, rows=new_rows)
 
@@ -128,8 +128,7 @@ class Report:
                     if v and v.replace('.', '', 1).lstrip('-').isdigit():
                         total = (total or 0.0) + float(v)
                 if total is not None:
-                    c = cols[i]
-                    totals[i] = ("%.1f" % total) if c.column == WORKDAYS_COL else str(int(total))
+                    totals[i] = cols[i].format_total(total)
             print(fmt_row(["-" * ws[i] for i in range(len(cols))]))
             print(fmt_row(totals))
 
@@ -160,18 +159,18 @@ def run_report(
         # YouTrack fetch at all.
         pr_nodes = spec.narrow_pr_nodes(config, marks, args, pr_nodes)
         yt_future = yt_executor = None
-        if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and config.youtrack_url and config.youtrack_token:
+        if spec.needs_youtrack and config.youtrack_url and config.youtrack_token:
             ticket_ids = [m.group(1) + "-" + m.group(2) for n in pr_nodes if (m := _YT_RE.match(n["title"]))]
             if ticket_ids:
-                # Time fetch_states on its own thread; measuring at .result() below would
+                # Time the fetch on its own thread; measuring at .result() below would
                 # instead capture the concurrent comment-fetch duration.
-                def _fetch_youtrack() -> dict[str, str]:
+                def _fetch_youtrack() -> dict[str, YoutrackIssue]:
                     t = time.monotonic()
-                    states = youtrack.fetch_states(
+                    issues = youtrack.fetch_issues(
                         config.youtrack_url, config.youtrack_token, ticket_ids,
                         verify_ssl=config.youtrack_verify_ssl, max_workers=config.youtrack_threads)
                     timing_log("youtrack (concurrent): %d tickets in %.3fs" % (len(ticket_ids), time.monotonic() - t))
-                    return states
+                    return issues
                 yt_executor = ThreadPoolExecutor(max_workers=1)
                 yt_future = yt_executor.submit(_fetch_youtrack)
 
@@ -179,7 +178,7 @@ def run_report(
         data = GithubData.from_raw(config, marks, args, raw)
 
         if yt_future is not None:
-            data.youtrack_states = yt_future.result()
+            data.youtrack_issues = yt_future.result()
             yt_executor.shutdown()
 
         _report_data_lines(config, marks, args, spec, data).aggregate().render()
@@ -201,7 +200,7 @@ def _report_data_lines(
     all_prs   = data.all_prs
     if WORKDAYS_COL in spec.all_cols and (not config.timely_access_token or not config.timely_account_id):
         raise _ListError("timely-access-token and timely-account-id must be set in config to use the workdays (wd) column")
-    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and (not config.youtrack_url or not config.youtrack_token):
+    if spec.needs_youtrack and (not config.youtrack_url or not config.youtrack_token):
         raise _ListError(
             "youtrack-url and youtrack-token must be set in config to use the valid (v) or youtrack-state (ys) column. "
             "To obtain a token: in YouTrack open your profile, go to Account Security, and create a new token."
@@ -221,15 +220,15 @@ def _report_data_lines(
     pr_filters      = [fs for fs in filters if not fs.uses_comment_time]
     comment_filters = [fs for fs in filters if     fs.uses_comment_time]
 
-    # run_report normally prefetches YouTrack states concurrently with the GitHub fetch;
-    # data.youtrack_states is then already populated (fetch_states returns a key per
-    # ticket, so a non-empty result means "already fetched"). Only fetch here when it
+    # run_report normally prefetches the YouTrack tickets concurrently with the GitHub
+    # fetch; data.youtrack_issues is then already populated (fetch_issues returns a key
+    # per ticket, so a non-empty result means "already fetched"). Only fetch here when it
     # wasn't prefetched — e.g. tests that call _report_data_lines directly.
-    if {YOUTRACK_STATE_COL, VALID_COL} & spec.all_cols and not data.youtrack_states:
+    if spec.needs_youtrack and not data.youtrack_issues:
         ticket_ids = [m.group(1) + "-" + m.group(2) for pr in all_prs if (m := _YT_RE.match(pr.title))]
         if ticket_ids:
             t0 = time.monotonic()
-            data.youtrack_states = youtrack.fetch_states(config.youtrack_url, config.youtrack_token, ticket_ids, verify_ssl=config.youtrack_verify_ssl, max_workers=config.youtrack_threads)
+            data.youtrack_issues = youtrack.fetch_issues(config.youtrack_url, config.youtrack_token, ticket_ids, verify_ssl=config.youtrack_verify_ssl, max_workers=config.youtrack_threads)
             timing_log("youtrack: %d tickets in %.3fs" % (len(ticket_ids), time.monotonic() - t0))
 
     if pr_filters:

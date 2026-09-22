@@ -18,12 +18,18 @@ class Column:
     aliases:           tuple[str, ...]        = ()
     is_timestamp:      bool                   = False
     is_numeric:        bool                   = False
+    # Whether the column's values are fractional, so that a total keeps a decimal place
+    # rather than being shown as a whole number.
+    is_fractional:     bool                   = False
     # Whether the column's value comes from the light PR query alone, rather than from
     # the per-PR comment/LOC fetch or an external service. Only such columns can be
     # filtered on before those fetches are made (see ReportSpec.narrow_pr_nodes), so
     # the default is the safe one: a new column is assumed to need more than the light
     # query until it says otherwise.
     from_light_query:  bool                   = False
+    # Whether the column's value comes from a YouTrack ticket, so that a report using it
+    # has to look those tickets up.
+    needs_youtrack:    bool                   = False
     multi_line_header: tuple[str, ...] | None = None
     cell:              Callable               = field(default=_noop_cell,     compare=False)
     sort_key:          Callable               = field(default=_noop_sort_key, compare=False)
@@ -35,6 +41,11 @@ class Column:
         Column._registry[self.name] = self
         for a in self.aliases:
             Column._aliases_d[a] = self
+
+    def format_total(self, total: float) -> str:
+        """How a sum of this column's cells is written, under an aggregate or in the
+        report's totals row."""
+        return ("%.1f" % total) if self.is_fractional else str(int(total))
 
     @staticmethod
     def col_from_name(name: str) -> "Column | None":

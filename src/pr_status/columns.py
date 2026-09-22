@@ -5,6 +5,7 @@ from ._util import truncate
 from .column import Column
 from .date_utils import fmt_ts, days_since
 from .pr_context import PRContext
+from .youtrack_issue import YoutrackIssue
 
 _YT_RE = re.compile(r'^([A-Z][A-Za-z0-9]*)-(\d+)\b')
 
@@ -55,17 +56,23 @@ def _cell_reviewers(ctx: PRContext, _: bool) -> str:
         parts.append((colour + rname + _RESET) if colour else rname)
     return ", ".join(parts)
 
+def _yt_ticket(ctx: PRContext) -> str:
+    m = _yt_match(ctx)
+    return m.group(1) + "-" + m.group(2) if m else ""
+
+
+def _yt_issue(ctx: PRContext) -> YoutrackIssue:
+    """The ticket a PR's title names, or an empty issue when it names none — every
+    column then reads a blank rather than each having to test for the ticket."""
+    return ctx.youtrack_issues.get(_yt_ticket(ctx), YoutrackIssue())
+
+
 def _cell_valid(ctx: PRContext, _: bool) -> str:
     _, _, ua = ctx.unresolved
-    m = _yt_match(ctx)
     # A PR with no YT ticket in its title is not invalid on that account. A PR that
     # does reference a ticket is only valid if that ticket is in the "Review" state
     # (a ticket that can't be found in YT has state "NOT FOUND", so is invalid).
-    if m is None:
-        yt_ok = True
-    else:
-        yt_state = ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "")
-        yt_ok = yt_state == "Review"
+    yt_ok = True if not _yt_ticket(ctx) else _yt_issue(ctx).state == "Review"
     is_valid = bool(ctx.pr.reviewers) and ua == 0 and yt_ok
     return "true" if is_valid else "false"
 
@@ -78,9 +85,13 @@ def _cell_workdays(ctx: PRContext, _: bool) -> str:
     return "" if wd is None else "%.1f" % wd
 
 def _cell_yt_state(ctx: PRContext, _: bool) -> str:
-    m = _yt_match(ctx)
-    if not m: return "none"
-    return ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "—")
+    if not _yt_ticket(ctx): return "none"
+    return _yt_issue(ctx).state or "—"
+
+
+def _cell_estimate(ctx: PRContext, _: bool) -> str:
+    days = _yt_issue(ctx).estimate_days
+    return "" if days is None else "%.1f" % days
 
 def _sort_key_workdays(ctx: PRContext) -> float:
     m = _yt_match(ctx)
@@ -99,9 +110,8 @@ def _sort_key_yt_id(ctx: PRContext) -> int:
     return int(m.group(2)) if m else 10**18
 
 def _sort_key_yt_state(ctx: PRContext) -> str:
-    m = _yt_match(ctx)
-    if not m: return "none"
-    return ctx.youtrack_states.get(m.group(1) + "-" + m.group(2), "—")
+    if not _yt_ticket(ctx): return "none"
+    return _yt_issue(ctx).state or "—"
 
 
 PULL_REQUEST_COL = Column(
@@ -203,12 +213,12 @@ YOUTRACK_ID_COL = Column(
     sort_key=_sort_key_yt_id,
 )
 YOUTRACK_STATE_COL = Column(
-    "youtrack-state", "YS", 15, ("ys",),
+    "youtrack-state", "YS", 15, ("ys",), needs_youtrack=True,
     cell=_cell_yt_state,
     sort_key=_sort_key_yt_state,
 )
 VALID_COL = Column(
-    "valid", "V", 5, ("v",),
+    "valid", "V", 5, ("v",), needs_youtrack=True,
     cell=_cell_valid,
     sort_key=lambda ctx: _cell_valid(ctx, False) == "true",
 )
@@ -228,9 +238,57 @@ BUILD_COL = Column(
     sort_key=_sort_key_build,
 )
 WORKDAYS_COL = Column(
-    "workdays", "WD", 6, ("wd",), is_numeric=True,
+    "workdays", "WD", 6, ("wd",), is_numeric=True, is_fractional=True,
     cell=_cell_workdays,
     sort_key=_sort_key_workdays,
+)
+
+DEV_DEADLINE_COL = Column(
+    "dev-deadline", "DD", 12, ("dd",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).dev_deadline,
+    sort_key=lambda ctx: _yt_issue(ctx).dev_deadline or "9999",
+)
+RELEASE_CYCLE_COL = Column(
+    "release-cycle", "RC", 30, ("rc",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).release_cycle,
+    sort_key=lambda ctx: _yt_issue(ctx).release_cycle.lower(),
+)
+RELEASE_NUMBER_COL = Column(
+    "release-number", "RN", 8, ("rn",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).release_number,
+    sort_key=lambda ctx: _yt_issue(ctx).release_number,
+)
+RELEASE_DATE_COL = Column(
+    "release-date", "RD", 12, ("rd",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).release_date,
+    # Unscheduled sorts last rather than first: a blank date is not an early one.
+    sort_key=lambda ctx: _yt_issue(ctx).release_date or "9999",
+)
+COMMITTED_COL = Column(
+    "committed", "CM", 17, ("cm",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).committed,
+    sort_key=lambda ctx: _yt_issue(ctx).committed.lower(),
+)
+ESTIMATE_COL = Column(
+    "estimate", "EST", 6, ("es",), is_numeric=True, is_fractional=True, needs_youtrack=True,
+    multi_line_header=("ESTIMATE", "(days)"),
+    cell=_cell_estimate,
+    sort_key=lambda ctx: _yt_issue(ctx).estimate_days if _yt_issue(ctx).estimate_days is not None else -1.0,
+)
+ESTIMATE_UNCERTAINTY_COL = Column(
+    "estimate-uncertainty", "EU", 8, ("eu",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).estimate_uncertainty,
+    sort_key=lambda ctx: _yt_issue(ctx).estimate_uncertainty.lower(),
+)
+TYPE_COL = Column(
+    "type", "TY", 10, ("ty",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).issue_type,
+    sort_key=lambda ctx: _yt_issue(ctx).issue_type.lower(),
+)
+RISK_COMPLEXITY_COL = Column(
+    "risk-complexity", "RK", 8, ("rk",), needs_youtrack=True,
+    cell=lambda ctx, _: _yt_issue(ctx).risk_complexity,
+    sort_key=lambda ctx: _yt_issue(ctx).risk_complexity.lower(),
 )
 
 ALL_COLUMNS: list[Column] = [
@@ -241,6 +299,8 @@ ALL_COLUMNS: list[Column] = [
     LAST_ACTIVITY_COL, AGE_COL, DRAFT_COL,
     YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,
     VALID_COL, REVIEW_OUTSTANDING_COL, BRANCH_COL, BUILD_COL, WORKDAYS_COL,
+    DEV_DEADLINE_COL, RELEASE_CYCLE_COL, RELEASE_NUMBER_COL, RELEASE_DATE_COL,
+    COMMITTED_COL, ESTIMATE_COL, ESTIMATE_UNCERTAINTY_COL, TYPE_COL, RISK_COMPLEXITY_COL,
 ]
 
 TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)

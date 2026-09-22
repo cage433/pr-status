@@ -8,6 +8,7 @@ from .marks import Marks
 from .node import Node
 from .pr_number import PRNumber
 from .report_args import ReportArgs
+from .youtrack_issue import YoutrackIssue
 
 if TYPE_CHECKING:
     from .pr_context import PRContext
@@ -193,7 +194,7 @@ class GithubData:
     rows_all: dict[PRNumber, list[GithubComment]]
     unresolved_counts: dict[PRNumber, tuple[int, int, int]]  # (all, human, ai)
     last_activity: dict[PRNumber, str]  # ISO timestamp of most recent comment or thread resolution
-    youtrack_states: dict[str, str] = field(default_factory=dict)  # ticket_id -> state
+    youtrack_issues: dict[str, YoutrackIssue] = field(default_factory=dict)  # ticket_id -> issue
 
     def make_ctx(self, pr: "GithubPR", config: Config, marks: Marks, yt_workdays: dict[str, float]) -> "PRContext":
         from .pr_context import PRContext
@@ -204,7 +205,7 @@ class GithubData:
             loc=self.loc_results.get(pr.number, (0, 0)),
             unresolved=self.unresolved_counts.get(pr.number, (0, 0, 0)),
             last_activity_ts=self.last_activity.get(pr.number, ""),
-            youtrack_states=self.youtrack_states,
+            youtrack_issues=self.youtrack_issues,
             yt_workdays=yt_workdays,
         )
 

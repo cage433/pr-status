@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from .config import Config
 from .github_data import GithubComment, GithubPR
 from .marks import Marks
+from .youtrack_issue import YoutrackIssue
 from .pr_number import PRNumber
 
 
@@ -16,5 +17,5 @@ class PRContext:
     loc:              tuple[int, int]        # (adds, dels)
     unresolved:       tuple[int, int, int]   # (uc, uh, ua)
     last_activity_ts: str
-    youtrack_states:  dict[str, str]
+    youtrack_issues:  dict[str, YoutrackIssue]
     yt_workdays:      dict[str, float]

@@ -94,7 +94,18 @@ These should be written as a comma separated list of names or aliases. The avail
 | youtrack-project | YP | YouTrack project name (e.g. PROJ); `none` if absent |
 | youtrack-id | YI | YouTrack numeric ID (e.g. 123); `none` if absent |
 | youtrack-state | YS | YouTrack ticket state |
+| dev-deadline | DD | The ticket's Dev Deadline, as a date |
+| release-cycle | RC | The ticket's Release Cycle, verbatim, e.g. `Release 2.36 9th October 2026` |
+| release-number | RN | The version the Release Cycle names, e.g. `2.36`. A cycle whose name carries no version is shown whole |
+| release-date | RD | The date the Release Cycle's name gives, e.g. `2026-10-09`. This is read from the name rather than from the version's own release date, which the two sometimes disagree on. Sorts unscheduled last |
+| committed | CM | The ticket's Committed field: `Committed`, `Not Committed` or `Requested commit` |
+| estimate | EST | The ticket's Estimate (dev only), in working days (a YouTrack week is 5 of them); totals at the foot of the report |
+| estimate-uncertainty | EU | The ticket's Estimate Uncertainty: `Low`, `Medium` or `High` |
+| type | TY | The ticket's Type, e.g. `Feature`, `Bug`, `Refactor` |
+| risk-complexity | RK | The ticket's Risk Complexity: `Small`, `Medium` or `Large` |
 | workdays | WD | Total workdays logged against the YT ticket in Timely (hours/8); blank if no YT ticket. Requires Timely admin access |
+
+Every column from `dev-deadline` to `risk-complexity`, along with `youtrack-state` and `valid`, is read from the ticket the PR's title names, so a report using one needs `youtrack-url` and `youtrack-token` in the config. They are blank on a PR whose title names no ticket, and on a ticket that leaves the field unset — `youtrack-state` tells the two apart.
 
 Unambiguous abbreviations of column names can be used, e.g. `last` for `last-activity`.
 

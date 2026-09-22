@@ -7,6 +7,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
+from .youtrack_issue import YoutrackIssue
+
 LOG_FILE = os.path.expanduser("~/.cache/pr-status/youtrack.log")
 
 
@@ -16,8 +18,11 @@ def _log(msg: str) -> None:
         f.write("[%s] %s\n" % (datetime.now().isoformat(timespec="seconds"), msg))
 
 
-def _fetch_state(url: str, token: str, ticket_id: str, verify_ssl: bool = True) -> str:
-    api_url = "%s/api/issues/%s?fields=customFields(name,value(name))" % (url.rstrip("/"), ticket_id)
+ISSUE_FIELDS = "customFields(name,value(name,presentation,minutes))"
+
+
+def _fetch_issue(url: str, token: str, ticket_id: str, verify_ssl: bool = True) -> YoutrackIssue:
+    api_url = "%s/api/issues/%s?fields=%s" % (url.rstrip("/"), ticket_id, ISSUE_FIELDS)
     req = urllib.request.Request(
         api_url,
         headers={"Authorization": "Bearer %s" % token, "Accept": "application/json"},
@@ -31,28 +36,21 @@ def _fetch_state(url: str, token: str, ticket_id: str, verify_ssl: bool = True) 
     try:
         with urllib.request.urlopen(req, timeout=10, context=ssl_ctx) as resp:
             data = json.loads(resp.read())
-        elapsed = time.monotonic() - t0
-        result = "—"
-        for field in data.get("customFields", []):
-            if field.get("name") == "State":
-                val = field.get("value")
-                if isinstance(val, dict):
-                    result = val.get("name", "—")
-                    break
-        _log("%.3fs %s -> %s" % (elapsed, ticket_id, result))
-        return result
+        issue = YoutrackIssue.from_custom_fields(data.get("customFields", []))
+        _log("%.3fs %s -> %s" % (time.monotonic() - t0, ticket_id, issue.state))
+        return issue
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         _log("%.3fs HTTP %d for %s: %s" % (time.monotonic() - t0, e.code, ticket_id, body[:300]))
-        return "NOT FOUND" if e.code == 404 else "ERROR"
+        return YoutrackIssue(state="NOT FOUND" if e.code == 404 else "ERROR")
     except Exception as e:
         _log("%.3fs error for %s: %s" % (time.monotonic() - t0, ticket_id, e))
-        return "ERROR"
+        return YoutrackIssue(state="ERROR")
 
 
-def fetch_states(url: str, token: str, ticket_ids: list[str], verify_ssl: bool = True,
-                 max_workers: int = 10) -> dict[str, str]:
+def fetch_issues(url: str, token: str, ticket_ids: list[str], verify_ssl: bool = True,
+                 max_workers: int = 10) -> dict[str, YoutrackIssue]:
     workers = max(1, min(len(ticket_ids), max_workers))
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futures = {ex.submit(_fetch_state, url, token, tid, verify_ssl): tid for tid in ticket_ids}
+        futures = {ex.submit(_fetch_issue, url, token, tid, verify_ssl): tid for tid in ticket_ids}
         return {futures[f]: f.result() for f in as_completed(futures)}
