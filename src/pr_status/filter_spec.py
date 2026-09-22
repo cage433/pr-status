@@ -143,9 +143,10 @@ class ColumnFilterSpec(FilterSpec):
         from .columns import COMMENT_TIME_COL
         from .date_utils import fmt_ts
         if self.column == COMMENT_TIME_COL:
+            # No 'null' here: a comment always carries a timestamp, and fmt_ts writes
+            # "n/a" rather than a blank for one that somehow does not.
             val = fmt_ts(cr.timestamp, show_time=True)
-            matched = val in self.values or (not val and self.wants_empty)
-            return not matched if self.negate else matched
+            return (val not in self.values) if self.negate else (val in self.values)
         return self.matches(ctx)
 
 
