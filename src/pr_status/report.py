@@ -201,9 +201,12 @@ def _report_data_lines(
     if WORKDAYS_COL in spec.all_cols and (not config.timely_access_token or not config.timely_account_id):
         raise _ListError("timely-access-token and timely-account-id must be set in config to use the workdays (wd) column")
     if spec.needs_youtrack and (not config.youtrack_url or not config.youtrack_token):
+        named = ", ".join("%s (%s)" % (col.name, col.aliases[0] if col.aliases else col.name)
+                          for col in spec.youtrack_cols)
         raise _ListError(
-            "youtrack-url and youtrack-token must be set in config to use the valid (v) or youtrack-state (ys) column. "
+            "youtrack-url and youtrack-token must be set in config to use the %s column. "
             "To obtain a token: in YouTrack open your profile, go to Account Security, and create a new token."
+            % named
         )
     yt_workdays: dict[str, float] = load_yt_workdays() if WORKDAYS_COL in spec.all_cols else {}
 

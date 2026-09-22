@@ -37,6 +37,11 @@ class ReportSpec:
         return any(col.needs_youtrack for col in self.all_cols)
 
     @property
+    def youtrack_cols(self) -> list[Column]:
+        """The columns the report reads from YouTrack, named so an error can say which."""
+        return sorted((col for col in self.all_cols if col.needs_youtrack), key=lambda c: c.name)
+
+    @property
     def pre_fetch_filters(self) -> list[FilterSpec]:
         """The filters decidable from the light PR query alone, so they can be applied
         before the per-PR comment/LOC fetch rather than after it. A filter naming no

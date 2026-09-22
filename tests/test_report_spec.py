@@ -53,6 +53,14 @@ class TestResolveColumns(unittest.TestCase):
         self.assertEqual(Column.resolve("bu"), BUILD_COL)
         self.assertEqual(Column.resolve("ci"), BUILD_COL)
 
+    def test_estimate_resolves_from_either_alias(self):
+        # The label is EST, so 'est' has to work as well as 'es'; without the alias it
+        # would be an ambiguous prefix of estimate and estimate-uncertainty.
+        self.assertEqual([c.name for c in resolve("es,est").cols], ["estimate", "estimate"])
+
+    def test_estimate_prefix_still_reaches_the_longer_name(self):
+        self.assertEqual([c.name for c in resolve("estimate-u").cols], ["estimate-uncertainty"])
+
     def test_column_prefix_match(self):
         spec = resolve("tit,auth,loc")
         self.assertEqual([c.name for c in spec.cols], ["title", "author", "loc"])

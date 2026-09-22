@@ -270,7 +270,7 @@ COMMITTED_COL = Column(
     sort_key=lambda ctx: _yt_issue(ctx).committed.lower(),
 )
 ESTIMATE_COL = Column(
-    "estimate", "EST", 6, ("es",), is_numeric=True, is_fractional=True, needs_youtrack=True,
+    "estimate", "EST", 6, ("es", "est"), is_numeric=True, is_fractional=True, needs_youtrack=True,
     multi_line_header=("ESTIMATE", "(days)"),
     cell=_cell_estimate,
     sort_key=lambda ctx: _yt_issue(ctx).estimate_days if _yt_issue(ctx).estimate_days is not None else -1.0,

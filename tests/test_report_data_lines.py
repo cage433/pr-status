@@ -1173,6 +1173,13 @@ class TestYoutrackFieldColumns(unittest.TestCase):
 
 class TestYoutrackFetchIsOnlyForColumnsThatNeedIt(unittest.TestCase):
 
+    def test_missing_credentials_name_the_columns_that_wanted_them(self):
+        with self.assertRaises(_ListError) as caught:
+            run("pr,ty,rk")
+        self.assertIn("risk-complexity (rk)", str(caught.exception))
+        self.assertIn("type (ty)", str(caught.exception))
+
+
     def test_a_youtrack_field_column_requires_credentials(self):
         for col in ("dd", "rc", "rn", "rd", "cm", "es", "eu", "ty", "rk"):
             self.assertTrue(make_spec(col).needs_youtrack, col)
