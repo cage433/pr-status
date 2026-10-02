@@ -12,26 +12,35 @@ $ brew install uv rlwrap gh
 $ gh auth login
 ```
 
-Create a minimal config file:
+Create a minimal config file, and a `keys` file beside it to hold the credentials:
 
 ```
 $ mkdir -p ~/.config/pr-status/
 $ cp sample.config ~/.config/pr-status/config
+$ cp sample.keys ~/.config/pr-status/keys && chmod 600 ~/.config/pr-status/keys
 ```
 
-Before running any report the config file needs to be edited in order to add a YouTrack authentication token.
+Both files use the same `name:value` format, and a setting may be written in either —
+a setting given in both is taken from `keys`. The split is there so that the config can
+be kept in version control while the credentials are not: nothing in `keys` is needed to
+read the config, and `pr-status` warns at startup if a credential is left in the config
+file. `keys` can be a symlink, so that the one file can live wherever credentials are
+kept — note that if that is cloud storage, the repl warns when it isn't mounted.
+
+Before running any report the keys file needs to be edited in order to add a YouTrack
+authentication token.
 
 - from YouTrack, click your avatar (top-right) → Profile.
 - open the Account Security tab.
 - under Authorization / Tokens, click "New token…" (sometimes labelled "Create new token").
 - give it a name and, for scope, grant it access to YouTrack (read access to issues is sufficient — the tool only reads the issue State custom field via `GET /api/issues/{id}`).
-- copy the token immediately (it's shown once) and paste it into the config file as `youtrack-token:XXXXXXX`
+- copy the token immediately (it's shown once) and paste it into the keys file as `youtrack-token:XXXXXXX`
 
-If `timely` reports are run, or regular reports using the `workdays` column, then Timely authentication details also need to be added to the config. Note that such reports can currently only be run by Timely users with admin access.
+If `timely` reports are run, or regular reports using the `workdays` column, then Timely authentication details also need to be added to the keys file. Note that such reports can currently only be run by Timely users with admin access.
 
 - account id — this is visible in the Timely URL after logging in, e.g. `https://app.timelyapp.com/<account-id>/...`
 - access token — from Timely's API/developer settings. Create an application in order to obtain a token.
-- paste these into the config file as `timely-account-id:XXXXXXX`, `timely-access-token:XXXXXX`
+- paste these into the keys file as `timely-account-id:XXXXXXX`, `timely-access-token:XXXXXX`
 
 Finally, in order to use some of the report aliases in the sample config, e.g. `mine` or `to-review`, add your own name to the config:
 

@@ -1,0 +1,15 @@
+# Credentials, read from ~/.config/pr-status/keys — a file kept out of version control,
+# so that the config beside it can be committed. The format is the config's own, and any
+# setting may be written here; a setting given in both files is taken from this one.
+#
+# This file can be a symlink, so the credentials themselves can live wherever you keep
+# them. pr-status warns at startup about any credential left in the config file.
+
+# From YouTrack: avatar → Profile → Account Security → New token…
+#youtrack-token:XXXXXXX
+
+# From Timely. The account id is the one in the URL after logging in; the access token
+# comes from Timely's API settings. Both are only needed for `timely` reports and the
+# `workdays` column.
+#timely-account-id:XXXXXXX
+#timely-access-token:XXXXXXX
