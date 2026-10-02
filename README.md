@@ -54,6 +54,10 @@ From here run one of the aliased reports, for example:
 
 If installation was done correctly, then this will show a pivot report of all outstanding PRs.
 
+Tab completes command names, the report aliases the config defines, and column names.
+The word list rlwrap completes from is written by the repl itself, at startup and on
+`reload`, so an alias added to the config is completed from the next launch onwards.
+
 The main usage of this tool is to run such pivot reports. In general reports are run with the command:
 
 ```
@@ -255,6 +259,7 @@ The command will typically be a report.
 | Command | Description |
 |---------|-------------|
 | `alias` | Displays the list of aliased reports |
+| `h`, `help` | Displays the list of commands |
 | `cols`, `columns` | Displays the available report columns, with their aliases and headings |
 | `rl`, `reload` | Reloads the config file |
 | `quit`, `exit` | Exits the application |

@@ -11,4 +11,15 @@ if ! command -v rlwrap &>/dev/null; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec rlwrap uv run --project "$SCRIPT_DIR" repl "$@"
+
+# The word list the repl wrote on its last run, for tab completion of commands, config
+# aliases and column names. Touched so that a first run doesn't warn about it.
+COMPLETIONS="$HOME/.cache/pr-status/completions"
+mkdir -p "$(dirname "$COMPLETIONS")" && touch "$COMPLETIONS"
+
+# -C names rlwrap's history and completion files after this repl rather than after uv,
+# which is the command it actually wraps. -b drops rlwrap's default word-breaking
+# characters, which include the hyphen that most command and column names carry; it only
+# applies to -f options that follow it.
+exec rlwrap -C pr-status -b $' \t\n' -f "$COMPLETIONS" \
+     uv run --project "$SCRIPT_DIR" repl "$@"

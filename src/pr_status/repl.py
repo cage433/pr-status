@@ -4,18 +4,24 @@ import sys
 from datetime import date, timedelta
 
 from .columns import column_listing
+from .completions import write_completions
 from .config import Config
 from . import gh_api
 from .marks import Marks
 from .pr_number import PRNumber
 from .report import run_report
 from .report_args import ReportArgs
+from .repl_command import (
+    ALIAS, COLUMNS, FOCUS, HELP, MARK, QUIT, RELOAD, REPORT, RTC, TIMELY,
+    UNFOCUS, UNMARK, command_listing,
+)
 from .timely_cache import CACHE_START, ensure_cache_current, is_cache_current, refresh_range
 from .timely_report import parse_month_spec, run_timely_report
 from .timely_report_args import TimelyReportArgs
 
-DEFAULT_CONFIG = os.path.expanduser("~/.config/pr-status/config")
-MARKS_FILE     = os.path.expanduser("~/.cache/pr-status/marks")
+DEFAULT_CONFIG   = os.path.expanduser("~/.config/pr-status/config")
+MARKS_FILE       = os.path.expanduser("~/.cache/pr-status/marks")
+COMPLETIONS_FILE = os.path.expanduser("~/.cache/pr-status/completions")
 
 
 def run_repl(
@@ -48,12 +54,12 @@ def run_repl(
                 alias_arg  = parts2[1] if len(parts2) > 1 else ""
                 arg        = (alias_arg + " " + arg).strip()
 
-            if cmd in ("report", "r"):
+            if REPORT.matches(cmd):
                 focus_filter = "--filter PR=%d " % focused_pr if focused_pr else ""
                 if (report_args := ReportArgs.parse(focus_filter + arg)) is not None:
                     run_report(config, marks, report_args)
 
-            elif cmd in ("mark", "m"):
+            elif MARK.matches(cmd):
                 pr_str = arg.split()[0] if arg.strip() else None
                 if pr_str is None:
                     print("Usage: mark PR", file=sys.stderr)
@@ -63,7 +69,7 @@ def run_repl(
                     except ValueError:
                         print("Invalid PR number: %s" % pr_str, file=sys.stderr)
 
-            elif cmd in ("unmark",):
+            elif UNMARK.matches(cmd):
                 pr_str = arg.split()[0] if arg.strip() else None
                 if pr_str is None:
                     print("Usage: unmark PR", file=sys.stderr)
@@ -73,7 +79,7 @@ def run_repl(
                     except ValueError:
                         print("Invalid PR number: %s" % pr_str, file=sys.stderr)
 
-            elif cmd in ("focus", "f"):
+            elif FOCUS.matches(cmd):
                 pr_str = arg.split()[0] if arg.strip() else None
                 if pr_str is None:
                     print("Usage: focus PR", file=sys.stderr)
@@ -84,11 +90,11 @@ def run_repl(
                     except ValueError:
                         print("Invalid PR number: %s" % pr_str, file=sys.stderr)
 
-            elif cmd in ("unfocus", "u"):
+            elif UNFOCUS.matches(cmd):
                 focused_pr = None
                 print("Unfocused.")
 
-            elif cmd in ("timely", "t"):
+            elif TIMELY.matches(cmd):
                 if not config.timely_access_token or not config.timely_account_id:
                     print("Error: timely-access-token and timely-account-id must be set in config.", file=sys.stderr)
                 else:
@@ -98,7 +104,7 @@ def run_repl(
                     if (timely_args := TimelyReportArgs.parse(arg)) is not None:
                         run_timely_report(config, timely_args)
 
-            elif cmd in ("refresh-timely-cache", "rtc"):
+            elif RTC.matches(cmd):
                 if not config.timely_access_token or not config.timely_account_id:
                     print("Error: timely-access-token and timely-account-id must be set in config.", file=sys.stderr)
                 else:
@@ -143,27 +149,32 @@ def run_repl(
                                       since, upto)
                     print("Done.")
 
-            elif cmd in ("reload", "rl"):
+            elif RELOAD.matches(cmd):
                 config = Config.load(DEFAULT_CONFIG)
                 config.repo.gh_user = gh_api.get_gh_user()
+                write_completions(COMPLETIONS_FILE, config.aliases)
                 print("Config reloaded.")
 
-            elif cmd in ("alias", "aliases"):
+            elif ALIAS.matches(cmd):
                 if config.aliases:
                     for name, expansion in sorted(config.aliases.items()):
                         print("  %s -> %s" % (name, expansion))
                 else:
                     print("No aliases configured.")
 
-            elif cmd in ("columns", "cols"):
+            elif COLUMNS.matches(cmd):
                 for line in column_listing():
                     print("  %s" % line)
 
-            elif cmd in ("quit", "exit"):
+            elif HELP.matches(cmd):
+                for line in command_listing():
+                    print("  %s" % line)
+
+            elif QUIT.matches(cmd):
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, timely (t), rtc, mark, unmark, focus, unfocus, reload, alias, columns, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Type 'help' for the commands." % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()
@@ -184,6 +195,7 @@ def main() -> None:
         print("Error: no repository specified. Set 'owner:' and 'repo-name:' in config.", file=sys.stderr)
         sys.exit(1)
 
+    write_completions(COMPLETIONS_FILE, config.aliases)
     run_repl(config, Marks(MARKS_FILE))
 
 
