@@ -332,3 +332,11 @@ ALL_COLUMNS: list[Column] = [
 ]
 
 TIMESTAMP_COLS = frozenset(c.name for c in ALL_COLUMNS if c.is_timestamp)
+
+
+def column_listing() -> list[str]:
+    """One line per report column — its name, its aliases, the short heading it shows
+    under and what it is, aligned to the widest entry of each."""
+    rows   = [(c.name, c.alias_str, c.label, c.notes) for c in ALL_COLUMNS]
+    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+    return ["  ".join(f.ljust(w) for f, w in zip(row, widths)).rstrip() for row in rows]

@@ -3,6 +3,7 @@ import os
 import sys
 from datetime import date, timedelta
 
+from .columns import column_listing
 from .config import Config
 from . import gh_api
 from .marks import Marks
@@ -154,11 +155,15 @@ def run_repl(
                 else:
                     print("No aliases configured.")
 
+            elif cmd in ("columns", "cols"):
+                for line in column_listing():
+                    print("  %s" % line)
+
             elif cmd in ("quit", "exit"):
                 break
 
             else:
-                print("Unknown command '%s'. Use: report, timely (t), rtc, mark, unmark, focus, unfocus, reload, alias, quit" % cmd, file=sys.stderr)
+                print("Unknown command '%s'. Use: report, timely (t), rtc, mark, unmark, focus, unfocus, reload, alias, columns, quit" % cmd, file=sys.stderr)
 
         except KeyboardInterrupt:
             print()

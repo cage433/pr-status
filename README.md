@@ -109,6 +109,12 @@ Every column from `dev-deadline` to `risk-complexity`, along with `youtrack-stat
 
 Unambiguous abbreviations of column names can be used, e.g. `last` for `last-activity`.
 
+The same columns, with their aliases and headings, are listed in the repl by:
+
+```
+> cols, columns
+```
+
 Note that if a column name is used, or if an alias is followed by an underscore, then long column names will be shown in the report heading, otherwise the alias is shown.
 
 
@@ -249,6 +255,7 @@ The command will typically be a report.
 | Command | Description |
 |---------|-------------|
 | `alias` | Displays the list of aliased reports |
+| `cols`, `columns` | Displays the available report columns, with their aliases and headings |
 | `rl`, `reload` | Reloads the config file |
 | `quit`, `exit` | Exits the application |
 | `rtc` | Refresh the Timely event cache (see [Timely reports](#timely-reports)) |

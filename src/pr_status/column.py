@@ -42,6 +42,19 @@ class Column:
         for a in self.aliases:
             Column._aliases_d[a] = self
 
+    @property
+    def alias_str(self) -> str:
+        return ", ".join(self.aliases)
+
+    @property
+    def notes(self) -> str:
+        """What a report needs, or gets, from this column, for the `columns` listing."""
+        flags = []
+        if self.needs_youtrack: flags.append("youtrack")
+        if self.is_timestamp:   flags.append("timestamp")
+        if self.is_numeric:     flags.append("numeric")
+        return ", ".join(flags)
+
     def format_total(self, total: float) -> str:
         """How a sum of this column's cells is written, under an aggregate or in the
         report's totals row."""
