@@ -27,6 +27,13 @@ def credential_key(line: str) -> str:
     return key if key in CREDENTIAL_KEYS else ""
 
 
+def broken_symlink(path: str) -> bool:
+    """Whether a path is a symlink to something that isn't there — which is how a file
+    kept in cloud storage looks whenever that storage isn't mounted. Worth telling apart
+    from a file that was never created, since the two call for opposite remedies."""
+    return os.path.islink(path) and not os.path.exists(path)
+
+
 def _read_lines(path: str) -> list[str]:
     """The lines of a config or keys file, or none when it isn't there. A keys file
     symlinked into cloud storage goes missing whenever that storage isn't mounted, so
@@ -34,7 +41,7 @@ def _read_lines(path: str) -> list[str]:
     if not path:
         return []
     if not os.path.exists(path):
-        if os.path.islink(path):
+        if broken_symlink(path):
             print("Warning: %s is a broken symlink — is its storage mounted?" % path,
                   file=sys.stderr)
         return []

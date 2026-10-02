@@ -24,8 +24,10 @@ Both files use the same `name:value` format, and a setting may be written in eit
 a setting given in both is taken from `keys`. The split is there so that the config can
 be kept in version control while the credentials are not: nothing in `keys` is needed to
 read the config, and `pr-status` warns at startup if a credential is left in the config
-file. `keys` can be a symlink, so that the one file can live wherever credentials are
-kept — note that if that is cloud storage, the repl warns when it isn't mounted.
+file. Either file can be a symlink, so that the real ones can live wherever you keep such
+things — in cloud storage, say, to share them between machines. `pr-status` tells a
+symlink whose target is missing apart from a file that was never created, so an
+unmounted drive reads as that rather than as a missing config.
 
 Before running any report the keys file needs to be edited in order to add a YouTrack
 authentication token.

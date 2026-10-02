@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr
 
-from pr_status.config import Config, credential_key
+from pr_status.config import Config, broken_symlink, credential_key
 
 
 def write(path: str, text: str) -> None:
@@ -27,6 +27,29 @@ class TestCredentialKey(unittest.TestCase):
     def test_an_ordinary_setting_is_not_one(self) -> None:
         self.assertEqual(credential_key("owner:topaztechnology"), "")
         self.assertEqual(credential_key("youtrack-url:https://example.com"), "")
+
+
+class TestBrokenSymlink(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+
+    def path(self, name: str) -> str:
+        return os.path.join(self.dir.name, name)
+
+    def test_a_link_to_an_absent_file_is_broken(self) -> None:
+        os.symlink(self.path("not-mounted"), self.path("link"))
+        self.assertTrue(broken_symlink(self.path("link")))
+
+    def test_a_link_to_a_file_that_is_there_is_not(self) -> None:
+        write(self.path("target"), "owner:acme\n")
+        os.symlink(self.path("target"), self.path("link"))
+        self.assertFalse(broken_symlink(self.path("link")))
+
+    def test_a_path_that_was_never_created_is_not(self) -> None:
+        # Absent and unmounted call for opposite remedies, so they must not look alike.
+        self.assertFalse(broken_symlink(self.path("nothing-here")))
 
 
 class TestKeysFile(unittest.TestCase):

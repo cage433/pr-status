@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from .columns import column_listing
 from .completions import write_completions
-from .config import Config
+from .config import broken_symlink, Config
 from . import gh_api
 from .marks import Marks
 from .pr_number import PRNumber
@@ -182,6 +182,11 @@ def run_repl(
 
 
 def main() -> None:
+    if broken_symlink(DEFAULT_CONFIG):
+        print("Error: %s is a broken symlink — is its storage mounted?" % DEFAULT_CONFIG,
+              file=sys.stderr)
+        sys.exit(1)
+
     if not os.path.isfile(DEFAULT_CONFIG):
         print("Error: no config file found at %s.\n"
               "Create one as described in the Config section of the README." % DEFAULT_CONFIG,
