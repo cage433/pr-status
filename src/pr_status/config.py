@@ -113,6 +113,20 @@ class Config:
     def is_ai_author(self, login: str) -> bool:
         return login in self.ai_authors or login.removesuffix("[bot]") in self.ai_authors
 
+    def expand_alias(self, word: str, arg: str) -> tuple[str, str]:
+        """The command, and its argument, that a line's first word and the rest of the
+        line stand for. An alias is replaced by its command, with the rest of the line
+        appended to the alias's own argument. An alias may also be followed by a comma
+        and further columns, e.g. `to-review,V`, which are added to those the alias
+        reports. A word that is not an alias is returned as it is, lowercased."""
+        name, _, extra_cols = word.partition(",")
+        expansion = self.aliases.get(name.lower())
+        if expansion is None:
+            return word.lower(), arg
+        parts     = expansion.split(None, 1)
+        alias_arg = parts[1] if len(parts) > 1 else ""
+        return parts[0].lower(), " ".join(p for p in (alias_arg, extra_cols, arg) if p.strip())
+
     @staticmethod
     def keys_file_for(config_file: str) -> str:
         """Where the credentials live: a `keys` file beside the config. Keeping it out

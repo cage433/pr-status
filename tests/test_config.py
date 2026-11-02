@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr
 
-from pr_status.config import Config, broken_symlink, credential_key
+from pr_status.config import Config, GithubInfo, broken_symlink, credential_key
 
 
 def write(path: str, text: str) -> None:
@@ -106,6 +106,43 @@ class TestKeysFile(unittest.TestCase):
         self.assertIn("broken symlink", err)
         self.assertEqual(config.repo.owner, "acme")
         self.assertEqual(config.youtrack_token, "")
+
+
+class TestExpandAlias(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.config = Config(
+            repo=GithubInfo(owner="owner", repo_name="repo"), ignored_authors=set(),
+            ignored_prs=set(), ai_authors=set(), author_names={}, ignored_comment_patterns=[],
+            ignored_title_patterns=[], ignored_labels=set(),
+            aliases={"to-review": "report P,T,A --filter RO=@me", "bare": "report"},
+        )
+
+    def test_an_alias_is_replaced_by_its_command(self) -> None:
+        self.assertEqual(self.config.expand_alias("to-review", ""),
+                         ("report", "P,T,A --filter RO=@me"))
+
+    def test_the_rest_of_the_line_is_appended(self) -> None:
+        self.assertEqual(self.config.expand_alias("to-review", "--filter A=bob"),
+                         ("report", "P,T,A --filter RO=@me --filter A=bob"))
+
+    def test_columns_after_a_comma_are_added_to_the_aliases_own(self) -> None:
+        self.assertEqual(self.config.expand_alias("to-review,V,LOC_", "--sort A"),
+                         ("report", "P,T,A --filter RO=@me V,LOC_ --sort A"))
+
+    def test_an_alias_with_no_argument_takes_the_added_columns_alone(self) -> None:
+        self.assertEqual(self.config.expand_alias("bare,V", ""), ("report", "V"))
+
+    def test_a_trailing_comma_adds_nothing(self) -> None:
+        self.assertEqual(self.config.expand_alias("to-review,", ""),
+                         ("report", "P,T,A --filter RO=@me"))
+
+    def test_the_alias_name_is_matched_whatever_its_case(self) -> None:
+        self.assertEqual(self.config.expand_alias("To-Review,V", "")[0], "report")
+
+    def test_a_word_that_is_no_alias_is_left_as_it_is(self) -> None:
+        self.assertEqual(self.config.expand_alias("Report", "P,T"), ("report", "P,T"))
+        self.assertEqual(self.config.expand_alias("nonesuch,V", ""), ("nonesuch,v", ""))
 
 
 if __name__ == "__main__":

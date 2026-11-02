@@ -264,6 +264,18 @@ alias:name:command
 
 The command will typically be a report.
 
+An alias can be extended where it is used. Columns written after the alias name and a
+comma are added to the alias's own, and anything else on the line - filters, sorts,
+other options - is added to its options:
+
+```
+> to-review,V                   the to-review report, with the valid column as well
+> to-review,V,LOC_ --filter A=bob
+```
+
+Columns separated from the alias name by a space are added in the same way, so
+`to-review V` is the same as `to-review,V`.
+
 
 ## Other commands
 

@@ -21,14 +21,16 @@ class ReportArgs:
         lp.add_argument("--include-drafts", action="store_true")
         lp.add_argument("--sort", default="")
         lp.add_argument("--filter", dest="filters", action="append", default=[])
-        lp.add_argument("columns", nargs="?", default="")
+        # Several column lists are joined into one, so that columns added after an
+        # alias - which may come after the alias's options - extend the alias's own.
+        lp.add_argument("columns", nargs="*", default=[])
         try:
             tokens = shlex.split(arg_str)
         except ValueError as e:
             print("Error parsing list arguments: %s" % e, file=sys.stderr)
             return None
         try:
-            largs = lp.parse_args(tokens)
+            largs = lp.parse_intermixed_args(tokens)
         except (argparse.ArgumentError, SystemExit) as e:
             print("Error parsing list arguments: %s" % e, file=sys.stderr)
             return None
@@ -38,5 +40,5 @@ class ReportArgs:
             include_drafts=largs.include_drafts,
             sort=largs.sort,
             filters=largs.filters,
-            columns=largs.columns,
+            columns=",".join(largs.columns),
         )

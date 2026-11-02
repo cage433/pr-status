@@ -44,15 +44,7 @@ def run_repl(
                 break
 
             parts = line.split(None, 1)
-            cmd = parts[0].lower()
-            arg = parts[1] if len(parts) > 1 else ""
-
-            if cmd in config.aliases:
-                expanded = config.aliases[cmd]
-                parts2 = expanded.split(None, 1)
-                cmd        = parts2[0].lower()
-                alias_arg  = parts2[1] if len(parts2) > 1 else ""
-                arg        = (alias_arg + " " + arg).strip()
+            cmd, arg = config.expand_alias(parts[0], parts[1] if len(parts) > 1 else "")
 
             if REPORT.matches(cmd):
                 focus_filter = "--filter PR=%d " % focused_pr if focused_pr else ""
