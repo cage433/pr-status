@@ -100,6 +100,22 @@ class GithubPR:
         return [r for r in self.reviewers
                 if r in self.requested_reviewers or r not in self.reviewed_reviewers]
 
+    def open_ask_number(self, login: str) -> int:
+        """Which ask of `login` the open review request on this PR is, when it is a
+        re-request; 0 when they have no open request or are being asked for the first time.
+
+        Counted from the request events, but a reviewer who submitted a review before
+        their open request is being asked again whatever those events say: they may have
+        reviewed without being asked, or their first request may be beyond the events
+        fetched. Such an ask is counted as at least the second.
+        """
+        if login not in self.requested_reviewers:
+            return 0
+        asks = self.review_request_counts.get(login, 0)
+        if login in self.reviewed_reviewers:
+            return max(asks, 2)
+        return asks if asks > 1 else 0
+
     @property
     def build_symbol(self) -> str:
         """One-glyph CI state for the PR's head commit:

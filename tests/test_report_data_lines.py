@@ -300,6 +300,13 @@ class TestBasicColumns(unittest.TestCase):
                      requested_reviewers={"bob"}, review_request_counts={"bob": 2})
         self.assertEqual(self._tty_reviewers_cell(pr), "bob (2)")
 
+    def test_reviewers_column_numbers_a_request_made_after_an_unrequested_review(self):
+        # bob reviewed without being asked, then was asked: only one request event, but
+        # the ask now open follows a review, so it is his second.
+        pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "CHANGES_REQUESTED"},
+                     requested_reviewers={"bob"}, review_request_counts={"bob": 1})
+        self.assertEqual(self._tty_reviewers_cell(pr), "bob (2)")
+
     def test_reviewers_column_applies_author_name_mapping_to_a_re_request(self):
         config = make_config(author_names={"bob": "Bob Smith"})
         pr = make_pr(1, reviewers=["bob"], reviewer_states={"bob": "APPROVED"},
