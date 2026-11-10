@@ -25,7 +25,6 @@ def _timestamp_val(col: str, ctx: PRContext) -> str:
     if col == "creation-date":             return ctx.pr.createdAt
     if col == "last-comment-time":         return _last_comment(ctx)
     if col == "my-last-comment-time":      return _last_comment(ctx, user_only=True)
-    if col == "mark":                      return ctx.marks.get(ctx.pr.number)
     return ""
 
 
@@ -163,8 +162,8 @@ LOC_COL = Column(
 )
 NUM_COMMENTS_COL = Column(
     "num-comments", "NC", 4, ("nc",), is_numeric=True,
-    cell=lambda ctx, _: str(len(ctx.marked_comments)),
-    sort_key=lambda ctx: len(ctx.marked_comments),
+    cell=lambda ctx, _: str(len(ctx.comments)),
+    sort_key=lambda ctx: len(ctx.comments),
 )
 CREATION_DATE_COL = Column(
     "creation-date", "CREATED", 17, ("cd",), is_timestamp=True, from_light_query=True,
@@ -180,11 +179,6 @@ MY_LAST_COMMENT_COL = Column(
     "my-last-comment-time", "MY LAST COMMENT", 17, ("mct",), is_timestamp=True,
     cell=lambda ctx, st: fmt_ts(_last_comment(ctx, user_only=True), st, blank_if_empty=True),
     sort_key=lambda ctx: _last_comment(ctx, user_only=True) or "",
-)
-MARK_COL = Column(
-    "mark", "MARK", 17, ("mk",), is_timestamp=True, from_light_query=True,
-    cell=lambda ctx, st: fmt_ts(ctx.marks.get(ctx.pr.number), st, blank_if_empty=True),
-    sort_key=lambda ctx: ctx.marks.get(ctx.pr.number) or "",
 )
 COMMENT_COL         = Column("comment",        "COMMENT",         70, ("c",))
 COMMENT_TIME_COL    = Column("comment-time",   "CT",              17, ("ct",),  is_timestamp=True)
@@ -321,7 +315,7 @@ RISK_COMPLEXITY_COL = Column(
 ALL_COLUMNS: list[Column] = [
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, LOC_COL, NUM_COMMENTS_COL,
     CREATION_DATE_COL, LAST_COMMENT_TIME_COL, MY_LAST_COMMENT_COL,
-    MARK_COL, COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
+    COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL,
     REVIEWERS_COL, UNRESOLVED_ALL_COL, UNRESOLVED_HUMAN_COL, UNRESOLVED_AI_COL,
     LAST_ACTIVITY_COL, AGE_COL, DRAFT_COL,
     YOUTRACK_TICKET_COL, YOUTRACK_PROJECT_COL, YOUTRACK_ID_COL, YOUTRACK_STATE_COL,

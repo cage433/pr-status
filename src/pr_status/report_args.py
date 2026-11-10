@@ -7,7 +7,6 @@ from dataclasses import dataclass
 @dataclass
 class ReportArgs:
     include_ai: bool
-    include_pre_mark_commits: bool
     include_drafts: bool
     sort: str
     filters: list[str]
@@ -17,7 +16,6 @@ class ReportArgs:
     def parse(arg_str: str) -> "ReportArgs | None":
         lp = argparse.ArgumentParser(prog="report", add_help=False, exit_on_error=False)
         lp.add_argument("--include-ai", action="store_true")
-        lp.add_argument("--include-pre-mark-commits", action="store_true")
         lp.add_argument("--include-drafts", action="store_true")
         lp.add_argument("--sort", default="")
         lp.add_argument("--filter", dest="filters", action="append", default=[])
@@ -36,7 +34,6 @@ class ReportArgs:
             return None
         return ReportArgs(
             include_ai=largs.include_ai,
-            include_pre_mark_commits=largs.include_pre_mark_commits,
             include_drafts=largs.include_drafts,
             sort=largs.sort,
             filters=largs.filters,

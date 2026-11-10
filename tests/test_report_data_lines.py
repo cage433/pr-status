@@ -4,7 +4,6 @@ from unittest.mock import patch
 from pr_status.config import Config, GithubInfo
 from pr_status.github_data import GithubComment, GithubData, GithubPR
 from pr_status.loc import LOC
-from pr_status.marks import Marks
 from pr_status.pr_number import PRNumber
 from pr_status.column import _ListError
 from pr_status.report import Report, _report_data_lines
@@ -29,15 +28,8 @@ def make_config(**kwargs) -> Config:
     return Config(**defaults)
 
 
-def make_args(columns: str = "", sort: str = "", filters: list[str] | None = None, include_pre_mark_commits: bool = False) -> ReportArgs:
-    return ReportArgs(include_ai=False, include_pre_mark_commits=include_pre_mark_commits, include_drafts=False, sort=sort, filters=filters or [], columns=columns)
-
-
-def make_marks(data: dict[PRNumber, str] | None = None) -> Marks:
-    marks = Marks("/nonexistent/path/marks.csv")
-    if data:
-        marks._data = data
-    return marks
+def make_args(columns: str = "", sort: str = "", filters: list[str] | None = None) -> ReportArgs:
+    return ReportArgs(include_ai=False, include_drafts=False, sort=sort, filters=filters or [], columns=columns)
 
 
 def make_spec(columns: str = "", sort: str = "", filters: list[str] | None = None) -> ReportSpec:
@@ -91,8 +83,7 @@ def make_comment(
 def make_data(
     prs: list[GithubPR] | None = None,
     loc_results: dict[PRNumber, LOC] | None = None,
-    rows_marked: dict[PRNumber, list[GithubComment]] | None = None,
-    rows_all: dict[PRNumber, list[GithubComment]] | None = None,
+    comments: dict[PRNumber, list[GithubComment]] | None = None,
     unresolved_counts: dict[PRNumber, tuple[int, int, int]] | None = None,
     last_activity: dict[PRNumber, str] | None = None,
     youtrack_states: dict[str, str] | None = None,
@@ -107,8 +98,7 @@ def make_data(
     return GithubData(
         all_prs=prs,
         loc_results=loc_results or {},
-        rows_marked=rows_marked if rows_marked is not None else {n: [] for n in pr_nums},
-        rows_all=rows_all if rows_all is not None else {n: [] for n in pr_nums},
+        comments=comments if comments is not None else {n: [] for n in pr_nums},
         unresolved_counts=unresolved_counts or {},
         last_activity=last_activity or {},
         youtrack_issues=issues,
@@ -120,16 +110,11 @@ def run(
     sort: str = "",
     filters: list[str] | None = None,
     config: Config | None = None,
-    marks: Marks | None = None,
     data: GithubData | None = None,
-    include_pre_mark_commits: bool = False,
 ) -> list[list[str]]:
-    args = make_args(columns=columns, sort=sort, filters=filters, include_pre_mark_commits=include_pre_mark_commits)
-    spec = ReportSpec.resolve(args)
+    spec = ReportSpec.resolve(make_args(columns=columns, sort=sort, filters=filters))
     return _report_data_lines(
         config or make_config(),
-        marks or make_marks(),
-        args,
         spec,
         data or make_data(),
     ).rows
@@ -187,8 +172,8 @@ class TestBasicColumns(unittest.TestCase):
 
     def test_num_comments(self):
         pr = make_pr(1)
-        rows_marked = {PRNumber(1): [make_comment("c1"), make_comment("c2")]}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): [make_comment("c1"), make_comment("c2")]}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("nc", data=data)
         self.assertEqual(rows[0][0], "2")
 
@@ -205,8 +190,8 @@ class TestBasicColumns(unittest.TestCase):
 
     def test_last_comment_time(self):
         pr = make_pr(1)
-        rows_all = {PRNumber(1): [make_comment("hi", timestamp="2024-06-01T12:00:00Z")]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        by_pr = {PRNumber(1): [make_comment("hi", timestamp="2024-06-01T12:00:00Z")]}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("lct", data=data)
         self.assertEqual(rows[0][0], "2024-06-01")
 
@@ -217,43 +202,31 @@ class TestBasicColumns(unittest.TestCase):
 
     def test_last_comment_time_uses_max_timestamp(self):
         pr = make_pr(1)
-        rows_all = {PRNumber(1): [
+        by_pr = {PRNumber(1): [
             make_comment("earlier", timestamp="2024-06-01T08:00:00Z"),
             make_comment("later",   timestamp="2024-06-15T12:00:00Z"),
         ]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("lct", data=data)
         self.assertEqual(rows[0][0], "2024-06-15")
 
     def test_my_last_comment_time_filters_to_gh_user(self):
         config = make_config(repo=GithubInfo(owner="o", repo_name="r", gh_user="myuser"))
         pr = make_pr(1)
-        rows_all = {PRNumber(1): [
+        by_pr = {PRNumber(1): [
             make_comment("other",  author="alice",  timestamp="2024-06-10T12:00:00Z"),
             make_comment("mine",   author="myuser", timestamp="2024-06-01T08:00:00Z"),
         ]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("mct", config=config, data=data)
         self.assertEqual(rows[0][0], "2024-06-01")
 
     def test_my_last_comment_time_blank_when_no_user_comments(self):
         config = make_config(repo=GithubInfo(owner="o", repo_name="r", gh_user="myuser"))
         pr = make_pr(1)
-        rows_all = {PRNumber(1): [make_comment("other", author="alice", timestamp="2024-06-10T12:00:00Z")]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        by_pr = {PRNumber(1): [make_comment("other", author="alice", timestamp="2024-06-10T12:00:00Z")]}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("mct", config=config, data=data)
-        self.assertEqual(rows[0][0], "")
-
-    def test_mark_column(self):
-        pr = make_pr(1)
-        marks = make_marks({PRNumber(1): "2024-05-10T09:00:00Z"})
-        data = make_data(prs=[pr])
-        rows = run("mk", marks=marks, data=data)
-        self.assertEqual(rows[0][0], "2024-05-10")
-
-    def test_mark_column_blank_when_no_mark(self):
-        data = make_data(prs=[make_pr(1)])
-        rows = run("mk", data=data)
         self.assertEqual(rows[0][0], "")
 
     def test_reviewers_column_with_reviewers(self):
@@ -402,15 +375,15 @@ class TestComparisonFilter(unittest.TestCase):
 
     def test_comparison_filter_includes_pr_when_true(self):
         pr = make_pr(1, created_at="2024-01-01T00:00:00Z")
-        rows_all = {PRNumber(1): [make_comment("hi", timestamp="2024-06-01T12:00:00Z")]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        by_pr = {PRNumber(1): [make_comment("hi", timestamp="2024-06-01T12:00:00Z")]}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr", filters=["lct>cd"], data=data)
         self.assertEqual(len(rows), 1)
 
     def test_comparison_filter_excludes_pr_when_false(self):
         pr = make_pr(1, created_at="2024-06-01T00:00:00Z")
-        rows_all = {PRNumber(1): [make_comment("hi", timestamp="2024-01-01T12:00:00Z")]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        by_pr = {PRNumber(1): [make_comment("hi", timestamp="2024-01-01T12:00:00Z")]}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr", filters=["lct>cd"], data=data)
         self.assertEqual(len(rows), 0)
 
@@ -525,11 +498,8 @@ class TestFiltering(unittest.TestCase):
             make_comment("old",   author="alice",  timestamp="2024-06-01T08:00:00Z"),
             make_comment("new",   author="bob",    timestamp="2024-06-15T10:00:00Z"),
         ]
-        rows_all = {PRNumber(1): [
-            make_comment("my comment", author="myuser", timestamp="2024-06-10T00:00:00Z"),
-        ]}
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all=rows_all)
+        comments.append(make_comment("my comment", author="myuser", timestamp="2024-06-10T00:00:00Z"))
+        data = make_data(prs=[pr], comments={PRNumber(1): comments})
         # CT>MCT: keep only comments newer than myuser's last comment (2024-06-10)
         rows = run("ct,ca,c,mct", filters=["CT>MCT"], config=config, data=data)
         self.assertEqual(len(rows), 1)
@@ -555,11 +525,11 @@ class TestSorting(unittest.TestCase):
     def test_sort_by_num_comments_ascending(self):
         pr1 = make_pr(1)
         pr2 = make_pr(2)
-        rows_marked = {
+        by_pr = {
             PRNumber(1): [make_comment("c1")],
             PRNumber(2): [make_comment("c1"), make_comment("c2"), make_comment("c3")],
         }
-        data = make_data(prs=[pr1, pr2], rows_marked=rows_marked, rows_all={PRNumber(1): [], PRNumber(2): []})
+        data = make_data(prs=[pr1, pr2], comments=by_pr)
         rows = run("pr,nc", sort="nc", data=data)
         self.assertEqual(rows[0][1], "1")
         self.assertEqual(rows[1][1], "3")
@@ -567,11 +537,11 @@ class TestSorting(unittest.TestCase):
     def test_sort_by_num_comments_descending_with_r(self):
         pr1 = make_pr(1)
         pr2 = make_pr(2)
-        rows_marked = {
+        by_pr = {
             PRNumber(1): [make_comment("c1")],
             PRNumber(2): [make_comment("c1"), make_comment("c2"), make_comment("c3")],
         }
-        data = make_data(prs=[pr1, pr2], rows_marked=rows_marked, rows_all={PRNumber(1): [], PRNumber(2): []})
+        data = make_data(prs=[pr1, pr2], comments=by_pr)
         rows = run("pr,nc", sort="nc:R", data=data)
         self.assertEqual(rows[0][1], "3")
         self.assertEqual(rows[1][1], "1")
@@ -646,15 +616,15 @@ class TestSorting(unittest.TestCase):
 
 class TestCommentColumn(unittest.TestCase):
 
-    def test_comment_column_expands_one_row_per_marked_comment(self):
+    def test_comment_column_expands_one_row_per_comment(self):
         pr = make_pr(1)
         comments = [make_comment("first"), make_comment("second")]
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): comments}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr,c", data=data)
         self.assertEqual(len(rows), 2)
 
-    def test_comment_column_empty_when_no_marked_comments(self):
+    def test_comment_column_empty_when_no_comments(self):
         data = make_data(prs=[make_pr(1)])
         rows = run("pr,c", data=data)
         self.assertEqual(rows, [])
@@ -662,16 +632,16 @@ class TestCommentColumn(unittest.TestCase):
     def test_comment_cell_shows_body_only(self):
         pr = make_pr(1)
         comments = [make_comment("this is the body", author="bob")]
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): comments}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr,c", data=data)
         self.assertEqual(rows[0][1], "this is the body")
 
     def test_comment_author_cell(self):
         pr = make_pr(1)
         comments = [make_comment("body", author="bob")]
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): comments}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr,ca", data=data)
         self.assertEqual(rows[0][1], "bob")
 
@@ -679,79 +649,44 @@ class TestCommentColumn(unittest.TestCase):
         config = make_config(author_names={"bob": "Robert"})
         pr = make_pr(1)
         comments = [make_comment("body", author="bob")]
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): comments}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr,ca", config=config, data=data)
         self.assertEqual(rows[0][1], "Robert")
 
     def test_comment_time_cell(self):
         pr = make_pr(1)
         comments = [make_comment("body", timestamp="2024-06-15T10:30:00Z")]
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): comments}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr,ct", data=data)
         self.assertEqual(rows[0][1], "2024-06-15 10:30")
 
     def test_comment_columns_trigger_expansion_without_c(self):
         pr = make_pr(1)
         comments = [make_comment("c1"), make_comment("c2")]
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): comments}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("pr,ct,ca", data=data)
         self.assertEqual(len(rows), 2)
 
     def test_non_comment_cols_repeated_per_comment_row(self):
         pr = make_pr(1, title="My PR")
         comments = [make_comment("c1"), make_comment("c2")]
-        rows_marked = {PRNumber(1): comments}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all={PRNumber(1): []})
+        by_pr = {PRNumber(1): comments}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("title,c", data=data)
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0][0], "My PR")
         self.assertEqual(rows[1][0], "My PR")
 
 
-class TestIncludePreMarkCommits(unittest.TestCase):
-
-    def test_marked_pr_always_included_in_report(self):
-        pr = make_pr(1)
-        marks = make_marks({PRNumber(1): "2024-06-01T00:00:00Z"})
-        data = make_data(prs=[pr], rows_marked={PRNumber(1): []}, rows_all={PRNumber(1): []})
-        rows = run("pr", marks=marks, data=data)
-        self.assertEqual(len(rows), 1)
-
-    def test_default_comment_column_uses_only_post_mark_comments(self):
-        pr = make_pr(1)
-        marks = make_marks({PRNumber(1): "2024-06-10T00:00:00Z"})
-        old_comment = make_comment("old", timestamp="2024-06-01T00:00:00Z")
-        new_comment = make_comment("new", timestamp="2024-06-15T00:00:00Z")
-        rows_marked = {PRNumber(1): [new_comment]}
-        rows_all = {PRNumber(1): [old_comment, new_comment]}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all=rows_all)
-        rows = run("pr,c", marks=marks, data=data)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0][1], "new")
-
-    def test_include_pre_mark_commits_uses_rows_all_for_comment_columns(self):
-        pr = make_pr(1)
-        marks = make_marks({PRNumber(1): "2024-06-10T00:00:00Z"})
-        old_comment = make_comment("old", timestamp="2024-06-01T00:00:00Z")
-        new_comment = make_comment("new", timestamp="2024-06-15T00:00:00Z")
-        rows_marked = {PRNumber(1): [new_comment]}
-        rows_all = {PRNumber(1): [old_comment, new_comment]}
-        data = make_data(prs=[pr], rows_marked=rows_marked, rows_all=rows_all)
-        rows = run("pr,c", marks=marks, data=data, include_pre_mark_commits=True)
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0][1], "old")
-        self.assertEqual(rows[1][1], "new")
-
-
 class TestShowTime(unittest.TestCase):
 
     def test_show_time_when_two_timestamp_cols_share_date(self):
         pr = make_pr(1, created_at="2024-06-01T00:00:00Z")
-        rows_all = {PRNumber(1): [make_comment("hi", timestamp="2024-06-01T12:30:00Z")]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        by_pr = {PRNumber(1): [make_comment("hi", timestamp="2024-06-01T12:30:00Z")]}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("cd,lct", data=data)
         # both cols share date 2024-06-01 so time portion shown for both
         self.assertIn("00:00", rows[0][0])
@@ -759,8 +694,8 @@ class TestShowTime(unittest.TestCase):
 
     def test_no_show_time_when_dates_differ(self):
         pr = make_pr(1, created_at="2024-06-01T00:00:00Z")
-        rows_all = {PRNumber(1): [make_comment("hi", timestamp="2024-07-15T12:30:00Z")]}
-        data = make_data(prs=[pr], rows_all=rows_all)
+        by_pr = {PRNumber(1): [make_comment("hi", timestamp="2024-07-15T12:30:00Z")]}
+        data = make_data(prs=[pr], comments=by_pr)
         rows = run("cd,lct", data=data)
         self.assertNotIn("00:00", rows[0][0])
         self.assertNotIn("12:30", rows[0][1])

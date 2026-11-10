@@ -31,7 +31,6 @@ from .sort_item import SortItem
 from .config import Config
 from .github_data import GithubData, GithubPR
 from .github_raw_data import GithubRawData
-from .marks import Marks
 from .report_args import ReportArgs
 from . import youtrack
 from .timely_cache import ensure_cache_current, is_cache_current, load_yt_workdays
@@ -135,7 +134,6 @@ class Report:
 
 def run_report(
     config: Config,
-    marks: Marks,
     args: ReportArgs,
 ) -> None:
     try:
@@ -157,7 +155,7 @@ def run_report(
         # Filters that only read the light query — e.g. --filter RO=@me — can be settled
         # now, so a PR that cannot appear in the report costs no LOC, comment or
         # YouTrack fetch at all.
-        pr_nodes = spec.narrow_pr_nodes(config, marks, args, pr_nodes)
+        pr_nodes = spec.narrow_pr_nodes(config, args, pr_nodes)
         yt_future = yt_executor = None
         if spec.needs_youtrack and config.youtrack_url and config.youtrack_token:
             ticket_ids = [m.group(1) + "-" + m.group(2) for n in pr_nodes if (m := _YT_RE.match(n["title"]))]
@@ -175,13 +173,13 @@ def run_report(
                 yt_future = yt_executor.submit(_fetch_youtrack)
 
         raw  = GithubRawData.fetch(config, args, all_col_names, pr_nodes=pr_nodes)
-        data = GithubData.from_raw(config, marks, args, raw)
+        data = GithubData.from_raw(config, args, raw)
 
         if yt_future is not None:
             data.youtrack_issues = yt_future.result()
             yt_executor.shutdown()
 
-        _report_data_lines(config, marks, args, spec, data).aggregate().render()
+        _report_data_lines(config, spec, data).aggregate().render()
         timing_log("report total: %.3fs" % (time.monotonic() - t0))
     except _ListError as e:
         print(str(e), file=sys.stderr)
@@ -189,8 +187,6 @@ def run_report(
 
 def _report_data_lines(
     config: Config,
-    marks: Marks,
-    args: ReportArgs,
     spec: ReportSpec,
     data: GithubData,
 ) -> Report:
@@ -212,7 +208,7 @@ def _report_data_lines(
 
     if sort_cols:
         def sort_key(pr: GithubPR) -> list[Any]:
-            ctx = data.make_ctx(pr, config, marks, yt_workdays)
+            ctx = data.make_ctx(pr, config, yt_workdays)
             key: list[Any] = []
             for si in sort_cols:
                 v = si.column.sort_key(ctx)
@@ -235,19 +231,18 @@ def _report_data_lines(
             timing_log("youtrack: %d tickets in %.3fs" % (len(ticket_ids), time.monotonic() - t0))
 
     if pr_filters:
-        all_prs = [pr for pr in all_prs if all(fs.matches(data.make_ctx(pr, config, marks, yt_workdays)) for fs in pr_filters)]
+        all_prs = [pr for pr in all_prs if all(fs.matches(data.make_ctx(pr, config, yt_workdays)) for fs in pr_filters)]
 
     from .columns import COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL
     _COMMENT_COLS    = frozenset({COMMENT_COL, COMMENT_TIME_COL, COMMENT_AUTHOR_COL})
     _comment_in_cols = any(col.column in _COMMENT_COLS for col in cols)
-    comment_source   = data.rows_all if args.include_pre_mark_commits else data.rows_marked
 
     rows = []
     for pr in all_prs:
-        ctx = data.make_ctx(pr, config, marks, yt_workdays)
+        ctx = data.make_ctx(pr, config, yt_workdays)
         stc = spec.show_time_cols(ctx)
         if _comment_in_cols:
-            for cr in comment_source.get(pr.number, []):
+            for cr in data.comments.get(pr.number, []):
                 if not comment_filters or all(fs.matches_comment(ctx, cr) for fs in comment_filters):
                     rows.append([col.comment_cell(cr, ctx, stc) for col in cols])
         else:

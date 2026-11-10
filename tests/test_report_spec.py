@@ -1,7 +1,6 @@
 import unittest
 
 from pr_status.config import Config, GithubInfo
-from pr_status.marks import Marks
 from pr_status.column import Column, _ListError
 from pr_status.columns import (
     PULL_REQUEST_COL, TITLE_COL, AUTHOR_COL, NUM_COMMENTS_COL,
@@ -16,7 +15,7 @@ from pr_status.report_spec import ReportSpec
 
 
 def make_args(columns: str = "", sort: str = "", filters: list[str] | None = None) -> ReportArgs:
-    return ReportArgs(include_ai=False, include_pre_mark_commits=False, include_drafts=False, sort=sort, filters=filters or [], columns=columns)
+    return ReportArgs(include_ai=False, include_drafts=False, sort=sort, filters=filters or [], columns=columns)
 
 
 def resolve(columns: str = "", sort: str = "", filters: list[str] | None = None) -> ReportSpec:
@@ -34,11 +33,11 @@ class TestResolveColumns(unittest.TestCase):
         self.assertEqual([c.name for c in spec.cols], ["title", "author"])
 
     def test_column_alias(self):
-        spec = resolve("pr,nc,lct,mct,cd,mk,c")
+        spec = resolve("pr,nc,lct,mct,cd,c")
         self.assertEqual([c.name for c in spec.cols], [
             "pull-request", "num-comments",
             "last-comment-time", "my-last-comment-time",
-            "creation-date", "mark", "comment",
+            "creation-date", "comment",
         ])
 
     def test_alias_takes_priority_over_prefix(self):
@@ -109,9 +108,9 @@ class TestResolveColumns(unittest.TestCase):
             resolve("nonexistent")
 
     def test_ambiguous_column_raises(self):
-        # "m" matches both "mark" and "my-last-comment-time"
+        # "release" begins release-cycle, release-date and release-number
         with self.assertRaises(_ListError):
-            resolve("m")
+            resolve("release")
 
     def test_comparison_in_column_position_raises(self):
         with self.assertRaises(_ListError):
@@ -288,7 +287,7 @@ class TestColHeader(unittest.TestCase):
             "pull-request": "PR", "title": "TITLE", "author": "AUTHOR",
             "loc": "LOC", "num-comments": "NC", "creation-date": "CREATED",
             "last-comment-time": "LAST COMMENT", "my-last-comment-time": "MY LAST COMMENT",
-            "mark": "MARK", "comment": "COMMENT",
+            "comment": "COMMENT",
         }
         for col_name, expected in cases.items():
             self.assertEqual(ColumnDisplay(Column.col_from_name(col_name)).header, expected)
@@ -355,8 +354,8 @@ class TestPreFetchFilters(unittest.TestCase):
         self.assertEqual(spec.pre_fetch_filters, [])
 
     def test_comparison_filter_is_pre_fetchable_only_when_both_sides_are(self):
-        self.assertEqual(len(resolve("pr", filters=["cd>mk"]).pre_fetch_filters), 1)
-        self.assertEqual(resolve("pr", filters=["lct>mk"]).pre_fetch_filters, [])
+        self.assertEqual(len(resolve("pr", filters=["cd>2024-01-01"]).pre_fetch_filters), 1)
+        self.assertEqual(resolve("pr", filters=["lct>cd"]).pre_fetch_filters, [])
 
     def test_filter_naming_no_column_is_not_pre_fetchable(self):
         # Two date literals name no column at all, so there is nothing to vouch for it.
@@ -426,13 +425,12 @@ class TestNarrowPrNodes(unittest.TestCase):
 
     def setUp(self):
         self.config = make_config()
-        self.marks  = Marks("/nonexistent/path/marks.csv")
         self.nodes  = [pr_node(1, reviewers=["bob"]), pr_node(2, reviewers=["carol"])]
 
     def narrow(self, filters: list[str]) -> list[int]:
         args = make_args(columns="pr", filters=filters)
         spec = ReportSpec.resolve(args)
-        return [n["number"] for n in spec.narrow_pr_nodes(self.config, self.marks, args, self.nodes)]
+        return [n["number"] for n in spec.narrow_pr_nodes(self.config, args, self.nodes)]
 
     def test_keeps_only_the_prs_a_light_filter_matches(self):
         self.assertEqual(self.narrow(["RO=bob"]), [1])

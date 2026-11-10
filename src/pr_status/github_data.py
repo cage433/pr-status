@@ -4,7 +4,6 @@ from typing import Any, TYPE_CHECKING
 from .config import Config
 from .github_raw_data import GithubRawData, node_login
 from .loc import LOC
-from .marks import Marks
 from .node import Node
 from .pr_number import PRNumber
 from .report_args import ReportArgs
@@ -206,18 +205,16 @@ class GithubPR:
 class GithubData:
     all_prs: list[GithubPR]
     loc_results: dict[PRNumber, LOC]
-    rows_marked: dict[PRNumber, list[GithubComment]]
-    rows_all: dict[PRNumber, list[GithubComment]]
+    comments: dict[PRNumber, list[GithubComment]]
     unresolved_counts: dict[PRNumber, tuple[int, int, int]]  # (all, human, ai)
     last_activity: dict[PRNumber, str]  # ISO timestamp of most recent comment or thread resolution
     youtrack_issues: dict[str, YoutrackIssue] = field(default_factory=dict)  # ticket_id -> issue
 
-    def make_ctx(self, pr: "GithubPR", config: Config, marks: Marks, yt_workdays: dict[str, float]) -> "PRContext":
+    def make_ctx(self, pr: "GithubPR", config: Config, yt_workdays: dict[str, float]) -> "PRContext":
         from .pr_context import PRContext
         return PRContext(
-            config=config, marks=marks, pr=pr,
-            comments=self.rows_all.get(pr.number, []),
-            marked_comments=self.rows_marked.get(pr.number, []),
+            config=config, pr=pr,
+            comments=self.comments.get(pr.number, []),
             loc=self.loc_results.get(pr.number, (0, 0)),
             unresolved=self.unresolved_counts.get(pr.number, (0, 0, 0)),
             last_activity_ts=self.last_activity.get(pr.number, ""),
@@ -227,14 +224,11 @@ class GithubData:
 
     @staticmethod
     def _collect_comments(
-        config: Config, 
-        marks: Marks, 
+        config: Config,
         args: ReportArgs,
         raw: GithubRawData,
         pr_num: PRNumber,
-        apply_mark: bool = True,
     ) -> list[GithubComment]:
-        mark_ts = marks.get(pr_num) if apply_mark else ""
         events: list[tuple[str, list[GithubComment]]] = []
         for c in raw.comment_nodes(pr_num):
             if (row := GithubComment._from_node(c, "comment", config, args)) is not None:
@@ -250,15 +244,11 @@ class GithubData:
             if thread_rows:
                 events.append((thread_rows[0].timestamp, thread_rows))
         events.sort(key=lambda x: x[0])
-        if mark_ts:
-            events = [(d, rs) for d, rs in events
-                      if max((r.timestamp for r in rs), default="") >= mark_ts]
         return [r for _, rs in events for r in rs]
 
     @staticmethod
     def from_raw(
         config: Config,
-        marks: Marks,
         args: ReportArgs,
         raw: GithubRawData,
     ) -> "GithubData":
@@ -266,14 +256,10 @@ class GithubData:
         if not args.include_drafts:
             all_prs = [pr for pr in all_prs if not pr.isDraft]
         all_prs.sort(key=lambda pr: pr.number)
-        rows_marked, rows_all = [
-            {
-                pr.number: GithubData._collect_comments(
-                    config, marks, args, raw, pr.number, apply_mark=apply_mark)  
-                for pr in all_prs
-            }
-                for apply_mark in [True, False]
-        ]
+        comments = {
+            pr.number: GithubData._collect_comments(config, args, raw, pr.number)
+            for pr in all_prs
+        }
         unresolved_counts = {
             pr.number: raw.unresolved_thread_counts(pr.number, config)
             for pr in all_prs
@@ -283,5 +269,5 @@ class GithubData:
             for pr in all_prs
         }
         return GithubData(all_prs=all_prs, loc_results=raw.loc_results,
-                          rows_marked=rows_marked, rows_all=rows_all,
+                          comments=comments,
                           unresolved_counts=unresolved_counts, last_activity=last_activity)

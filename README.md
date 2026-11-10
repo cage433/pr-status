@@ -86,11 +86,10 @@ These should be written as a comma separated list of names or aliases. The avail
 | title | T | |
 | author | A | |
 | loc | LOC | Scala lines added/removed |
-| num-comments | NC | Comments since mark (or all if no mark) |
+| num-comments | NC | Number of comments |
 | creation-date | CD | Date PR was opened |
 | last-comment-time | LCT | Time of most recent comment |
 | my-last-comment-time | MCT | Time of your most recent comment |
-| mark | MK | Your mark timestamp (see [Marking](#marking)) |
 | comment | C | One row per comment; shows comment body |
 | comment-time | CT | Timestamp of comment (use with C or CA) |
 | comment-author | CA | Author of comment (use with C or CT) |
@@ -196,7 +195,6 @@ MCT = LCT         true if the last comment was made at exactly the same time as 
 |--------|-------------|
 | `--include-ai` | Include AI comments and reviewers (excluded by default) |
 | `--include-drafts` | Include draft PRs (excluded by default) |
-| `--include-pre-mark-commits` | Include comments before the mark timestamp (see [Marking](#marking)) |
 
 
 ## How PRs are found
@@ -211,23 +209,6 @@ Search reads a separate index from the repository itself, updated moments after 
 event rather than instantly, so a PR opened — or a review requested — seconds ago may
 take a little while to show up. Everything else, including every column value, is read
 from the repository directly.
-
-
-## Marking
-
-Marking simply records a timestamp against a specific PR, via:
-
-```
-> m, mark <PR id>
-```
-
-This allows timestamp predicates such as `LCT > MK` to be used, which could filter those PRs whose last comment was after the timestamp. The expected use case is that a developer feels they are up to date with some PR as of some timestamp, and wants to know if anything has happened to the PR since that point.
-
-To remove the timestamp, enter:
-
-```
-> unmark <PR id>
-```
 
 
 ## Focussing

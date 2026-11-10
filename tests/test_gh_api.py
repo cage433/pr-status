@@ -20,7 +20,7 @@ def make_config(**kwargs) -> Config:
 
 
 def make_args(include_drafts: bool = False) -> ReportArgs:
-    return ReportArgs(include_ai=False, include_pre_mark_commits=False,
+    return ReportArgs(include_ai=False,
                       include_drafts=include_drafts, sort="", filters=[], columns="pr")
 
 

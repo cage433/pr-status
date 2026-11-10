@@ -22,8 +22,6 @@ class ReplCommand:
 
 
 REPORT   = ReplCommand("report",   ("r",),         "Run a PR report")
-MARK     = ReplCommand("mark",     ("m",),         "Mark a PR, so that later reports count only what followed")
-UNMARK   = ReplCommand("unmark",   (),             "Remove a PR's mark")
 FOCUS    = ReplCommand("focus",    ("f",),         "Restrict later reports to one PR")
 UNFOCUS  = ReplCommand("unfocus",  ("u",),         "Report on every PR again")
 TIMELY   = ReplCommand("timely",   ("t",),         "Run a Timely report")
@@ -35,7 +33,7 @@ HELP     = ReplCommand("help",     ("h", "?"),     "List these commands")
 QUIT     = ReplCommand("quit",     ("exit",),      "Leave the repl")
 
 COMMANDS: list[ReplCommand] = [
-    REPORT, MARK, UNMARK, FOCUS, UNFOCUS, TIMELY, RTC,
+    REPORT, FOCUS, UNFOCUS, TIMELY, RTC,
     COLUMNS, ALIAS, RELOAD, HELP, QUIT,
 ]
 

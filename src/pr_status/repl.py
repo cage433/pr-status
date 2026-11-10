@@ -7,27 +7,22 @@ from .columns import column_listing
 from .completions import write_completions
 from .config import broken_symlink, Config
 from . import gh_api
-from .marks import Marks
 from .pr_number import PRNumber
 from .report import run_report
 from .report_args import ReportArgs
 from .repl_command import (
-    ALIAS, COLUMNS, FOCUS, HELP, MARK, QUIT, RELOAD, REPORT, RTC, TIMELY,
-    UNFOCUS, UNMARK, command_listing,
+    ALIAS, COLUMNS, FOCUS, HELP, QUIT, RELOAD, REPORT, RTC, TIMELY,
+    UNFOCUS, command_listing,
 )
 from .timely_cache import CACHE_START, ensure_cache_current, is_cache_current, refresh_range
 from .timely_report import parse_month_spec, run_timely_report
 from .timely_report_args import TimelyReportArgs
 
 DEFAULT_CONFIG   = os.path.expanduser("~/.config/pr-status/config")
-MARKS_FILE       = os.path.expanduser("~/.cache/pr-status/marks")
 COMPLETIONS_FILE = os.path.expanduser("~/.cache/pr-status/completions")
 
 
-def run_repl(
-    config: Config,
-    marks: Marks,
-) -> None:
+def run_repl(config: Config) -> None:
     focused_pr: PRNumber | None = None
 
     while True:
@@ -49,27 +44,7 @@ def run_repl(
             if REPORT.matches(cmd):
                 focus_filter = "--filter PR=%d " % focused_pr if focused_pr else ""
                 if (report_args := ReportArgs.parse(focus_filter + arg)) is not None:
-                    run_report(config, marks, report_args)
-
-            elif MARK.matches(cmd):
-                pr_str = arg.split()[0] if arg.strip() else None
-                if pr_str is None:
-                    print("Usage: mark PR", file=sys.stderr)
-                else:
-                    try:
-                        marks.mark(PRNumber(int(pr_str)))
-                    except ValueError:
-                        print("Invalid PR number: %s" % pr_str, file=sys.stderr)
-
-            elif UNMARK.matches(cmd):
-                pr_str = arg.split()[0] if arg.strip() else None
-                if pr_str is None:
-                    print("Usage: unmark PR", file=sys.stderr)
-                else:
-                    try:
-                        marks.unmark(PRNumber(int(pr_str)))
-                    except ValueError:
-                        print("Invalid PR number: %s" % pr_str, file=sys.stderr)
+                    run_report(config, report_args)
 
             elif FOCUS.matches(cmd):
                 pr_str = arg.split()[0] if arg.strip() else None
@@ -193,7 +168,7 @@ def main() -> None:
         sys.exit(1)
 
     write_completions(COMPLETIONS_FILE, config.aliases)
-    run_repl(config, Marks(MARKS_FILE))
+    run_repl(config)
 
 
 if __name__ == "__main__":
